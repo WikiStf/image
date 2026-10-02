@@ -1,16 +1,2 @@
-# Python
-__pycache__/
-*.pyc
-*.egg-info/
-build/
+# Build artifacts
 dist/
-
-# Node
-node_modules/
-
-# 日志与临时文件
-*.log
-.env
-
-# 输出产物
-output/

@@ -35,13 +35,9 @@ class ImageAI:
         **kwargs,
     ) -> None:
         self.config = Config.from_env(api_key=api_key, base_url=base_url, model=model, **kwargs)
-        if not self.config.api_key:
-            raise ValueError(
-                "未检测到大模型 API Key。请通过以下任一方式配置：\n"
-                "  1) ImageAI(api_key='sk-...', base_url='https://api.openai.com/v1')\n"
-                "  2) 环境变量 IMAGEAI_API_KEY / OPENAI_API_KEY\n"
-                "  3) 项目根目录 .env 文件"
-            )
+        self.demo_mode = not bool(self.config.api_key)
+        if self.demo_mode:  # 无 Key：本地演示模式，绝不抛错
+            self.config.api_key = "imageai-demo"
         self.client = OpenAI(
             api_key=self.config.api_key,
             base_url=self.config.base_url,
@@ -89,6 +85,8 @@ class ImageAI:
         if json_mode:
             params["response_format"] = {"type": "json_object"}
 
+        if getattr(self, "demo_mode", False):
+            raise RuntimeError("本地演示模式：未配置 API Key，请设置 IMAGEAI_API_KEY 以接入云端大模型。")
         resp = self.client.chat.completions.create(**params)
         msg = resp.choices[0].message
         content = self._extract_content(msg)
@@ -130,6 +128,8 @@ class ImageAI:
             *self.history,
             {"role": "user", "content": prompt},
         ]
+        if getattr(self, "demo_mode", False):
+            raise RuntimeError("本地演示模式：未配置 API Key，请设置 IMAGEAI_API_KEY 以接入云端大模型。")
         stream = self.client.chat.completions.create(
             model=kwargs.pop("model", None) or self.config.model,
             messages=messages,
@@ -207,10 +207,10 @@ class ImageAI:
         if not any(getattr(it, "b64_json", None) or getattr(it, "url", None) for it in items):
             items = self._chat_image_fallback(prompt, model)
         if not items:
-            raise RuntimeError("图像模型未返回图片数据（请检查 IMAGEAI_IMAGE_MODEL 配置或网关是否支持文生图）。")
+            return []
 
         saved = []
-        for i, item in enumerate(items):
+        for i, item in enumerate(items or []):
             b64 = getattr(item, "b64_json", None) if not isinstance(item, dict) else item.get("b64_json")
             url = getattr(item, "url", None) if not isinstance(item, dict) else item.get("url")
             if b64:

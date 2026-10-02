@@ -1,210 +1,198 @@
-/** imageAI 主页交互逻辑（TypeScript，严格模式） */
+interface ModelInfo { id: string; name: string; desc: string; thinking: boolean; speed: string; icon: string }
+interface ConnectorInfo { id: string; name: string; icon: string; desc: string; placeholder: string; enabled: boolean }
+interface ChatResp { reply?: string; thinking?: string; model?: string; sources?: { icon: string; name: string }[]; mode?: string; kind?: string; image?: string; image_svg?: string }
 
-type Mode = "chat" | "draw" | "translate";
+type Mode = "chat" | "draw";
 
-interface ApiRequest {
-  mode: Mode;
-  text: string;
-}
-
-interface ApiResponse {
-  reply?: string;
-  image?: string; // base64 png
-  error?: string;
-}
-
-/* ---------------- 星空背景动画 ---------------- */
 class StarField {
-  private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
-  private stars: Array<{ x: number; y: number; r: number; s: number; o: number }> = [];
+  private pts: { x: number; y: number; r: number; s: number; a: number }[] = [];
+  constructor(private cv: HTMLCanvasElement) {
+    this.ctx = cv.getContext("2d")!;
+    this.resize(); addEventListener("resize", () => this.resize());
+    for (let i = 0; i < 140; i++) this.pts.push(this.spawn(true));
+    requestAnimationFrame(() => this.tick());
+  }
+  private resize() { this.cv.width = innerWidth; this.cv.height = innerHeight; }
+  private spawn(anyY: boolean) { return { x: Math.random() * this.cv.width, y: anyY ? Math.random() * this.cv.height : -4, r: Math.random() * 1.6 + .3, s: Math.random() * .35 + .06, a: Math.random() }; }
+  private tick() {
+    const { ctx, cv } = this;
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    for (const p of this.pts) {
+      p.y += p.s; p.a += .02;
+      if (p.y > cv.height) Object.assign(p, this.spawn(false));
+      ctx.globalAlpha = .35 + Math.abs(Math.sin(p.a)) * .65;
+      ctx.fillStyle = "#9db8ff";
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(() => this.tick());
+  }
+}
 
-  constructor(canvasId: string) {
-    this.canvas = document.getElementById(canvasId) as HTMLCanvasElement;
-    this.ctx = this.canvas.getContext("2d")!;
-    this.resize();
-    window.addEventListener("resize", () => this.resize());
-    this.loop();
+class Typewriter {
+  constructor(private el: HTMLElement, private text: string, private speed = 45) { this.run(); }
+  private async run() {
+    for (;;) {
+      this.el.textContent = "";
+      for (let i = 0; i < this.text.length; i++) {
+        this.el.textContent += this.text[i];
+        await new Promise(r => setTimeout(r, this.speed));
+      }
+      await new Promise(r => setTimeout(r, 3200));
+      while (this.el.textContent.length) { this.el.textContent = this.el.textContent.slice(0, -1); await new Promise(r => setTimeout(r, 18)); }
+    }
+  }
+}
+
+function esc(s: string): string {
+  return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+}
+
+class ChatApp {
+  private box: HTMLElement;
+  private input: HTMLTextAreaElement;
+  private sendBtn: HTMLButtonElement;
+  private modelSel: HTMLElement;
+  private connSel: HTMLElement;
+  private models: ModelInfo[] = [];
+  private connectors: ConnectorInfo[] = [];
+  private mode: Mode = "chat";
+  private busy = false;
+
+  constructor() {
+    this.box = document.getElementById("chat-box")!;
+    this.input = document.getElementById("chat-input") as HTMLTextAreaElement;
+    this.sendBtn = document.getElementById("chat-send") as HTMLButtonElement;
+    this.modelSel = document.getElementById("model-select")!;
+    this.connSel = document.getElementById("conn-chips")!;
+    this.bind();
+    this.loadModels();
+    this.loadConnectors();
+    this.greet();
   }
 
-  private resize(): void {
-    this.canvas.width = window.innerWidth;
-    this.canvas.height = window.innerHeight;
-    const count = Math.floor((this.canvas.width * this.canvas.height) / 9000);
-    this.stars = Array.from({ length: count }, () => ({
-      x: Math.random() * this.canvas.width,
-      y: Math.random() * this.canvas.height,
-      r: Math.random() * 1.5 + 0.3,
-      s: Math.random() * 0.35 + 0.05,
-      o: Math.random(),
+  private bind() {
+    this.sendBtn.onclick = () => this.submit();
+    this.input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); this.submit(); } });
+    document.getElementById("new-chat")?.addEventListener("click", async () => {
+      await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ new_chat: true, text: "" }) });
+      this.box.innerHTML = ""; this.greet();
+    });
+    document.querySelectorAll(".pg-tab").forEach(t => t.addEventListener("click", () => {
+      document.querySelectorAll(".pg-tab").forEach(x => x.classList.remove("active"));
+      t.classList.add("active");
+      this.mode = (t as HTMLElement).dataset.mode as Mode;
+      this.input.placeholder = this.mode === "draw" ? "描述你想画的图片，回车生成…" : "向 imageAI 提问，回车发送…";
     }));
   }
 
-  private loop = (): void => {
-    const { ctx, canvas } = this;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    for (const st of this.stars) {
-      st.y += st.s;
-      st.o += 0.01;
-      if (st.y > canvas.height) { st.y = -2; st.x = Math.random() * canvas.width; }
-      ctx.globalAlpha = 0.3 + Math.abs(Math.sin(st.o)) * 0.7;
-      ctx.fillStyle = "#cdd6ff";
-      ctx.beginPath();
-      ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-    requestAnimationFrame(this.loop);
-  };
-}
-
-/* ---------------- 打字机效果 ---------------- */
-class Typewriter {
-  private el: HTMLElement;
-  private cursor: HTMLSpanElement;
-  private queue: string[] = [];
-  private timer: number | null = null;
-
-  constructor(elId: string) {
-    this.el = document.getElementById(elId)!;
-    this.cursor = document.createElement("span");
-    this.cursor.className = "cursor";
-  }
-
-  type(text: string, speed = 45): Promise<void> {
-    return new Promise((resolve) => {
-      this.queue = [...text];
-      this.el.textContent = "";
-      this.el.appendChild(this.cursor);
-      const step = () => {
-        const ch = this.queue.shift();
-        if (ch === undefined) {
-          resolve();
-          return;
-        }
-        this.el.insertBefore(document.createTextNode(ch), this.cursor);
-        this.timer = window.setTimeout(step, speed);
+  private async loadModels() {
+    try { this.models = await (await fetch("/api/models")).json(); } catch { return; }
+    this.modelSel.innerHTML = "";
+    for (const m of this.models) {
+      const card = document.createElement("div");
+      card.className = "model-card" + (m.thinking ? " deep" : ""); card.dataset.mid = m.id;
+      card.innerHTML = `<span class="mi">${m.icon}</span><b>${esc(m.name)}</b>
+        <small>${esc(m.desc)}</small><em>${m.speed}${m.thinking ? " · 显示思考过程" : " · 快速直答"}</em>`;
+      card.onclick = () => {
+        document.querySelectorAll(".model-card").forEach(c => c.classList.remove("on"));
+        card.classList.add("on");
+        this.bubble("sys", `已切换到 ${m.name}（${m.thinking ? "深度思考，会展示剖析过程" : "快速模式，直接作答"}）`);
       };
-      step();
-    });
+      this.modelSel.appendChild(card);
+    }
+    const want = (window as any).INIT_MODEL as string | undefined;
+    const cards = Array.from(this.modelSel.children) as HTMLElement[];
+    (cards.find(c => this.models.find(m => m.id === want && c.innerHTML.includes(m.name))) ?? cards[0])?.classList.add("on");
   }
 
-  stop(): void {
-    if (this.timer !== null) clearTimeout(this.timer);
-  }
-}
-
-/* ---------------- API 调用 ---------------- */
-// 页面可通过 window.IMAGEAI_API 覆盖接口地址（默认同源 /api，由 Flask 提供）
-interface Window { IMAGEAI_API?: string }
-
-async function callApi(mode: Mode, text: string): Promise<ApiResponse> {
-  if (location.protocol === "file:" && !window.IMAGEAI_API) {
-    throw new Error("当前以 file:// 打开，无法直连大模型。请运行 `python app.py` 后访问 http://localhost:8000");
-  }
-  const body: ApiRequest = { mode, text };
-  const res = await fetch(window.IMAGEAI_API ?? "/api", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return (await res.json()) as ApiResponse;
-}
-
-/* ---------------- 体验区（练习大模型） ---------------- */
-class Playground {
-  private mode: Mode = "chat";
-  private input: HTMLInputElement;
-  private replyBox: HTMLElement;
-  private sendBtn: HTMLButtonElement;
-
-  constructor() {
-    this.input = document.getElementById("pg-input-el") as HTMLInputElement;
-    this.replyBox = document.getElementById("pg-reply")!;
-    this.sendBtn = document.getElementById("pg-send") as HTMLButtonElement;
-
-    document.querySelectorAll<HTMLDivElement>(".chip").forEach((chip) => {
-      chip.addEventListener("click", () => {
-        document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
-        chip.classList.add("active");
-        this.mode = chip.dataset.mode as Mode;
-        this.input.placeholder =
-          this.mode === "draw" ? "描述你想画的图，例如：赛博朋克风格的猫…" :
-          this.mode === "translate" ? "输入中文，自动翻译成英文…" :
-          "向 imageAI 提问，回车发送…";
-      });
-    });
-
-    this.sendBtn.addEventListener("click", () => this.send());
-    this.input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") this.send();
-    });
+  private async loadConnectors() {
+    try { this.connectors = await (await fetch("/api/connectors")).json(); } catch { return; }
+    this.renderConnectors();
   }
 
-  private esc(s: string): string {
-    const d = document.createElement("div");
-    d.textContent = s;
-    return d.innerHTML;
-  }
-
-  private async send(): Promise<void> {
-    const text = this.input.value.trim();
-    if (!text) return;
-    this.input.value = "";
-    this.sendBtn.disabled = true;
-    this.replyBox.innerHTML = `<div class="reply-card thinking">🧠 ${
-      this.mode === "draw" ? "绘画中，请稍候…" : "思考中…"
-    }</div>`;
-    try {
-      const j = await callApi(this.mode, text);
-      if (j.error) {
-        this.replyBox.innerHTML = `<div class="reply-card">❌ ${this.esc(j.error)}</div>`;
-      } else if (j.image) {
-        this.replyBox.innerHTML =
-          `<div class="reply-card">${this.esc(j.reply ?? "")}` +
-          `<img src="data:image/png;base64,${j.image}" alt="generated"></div>`;
-      } else {
-        this.replyBox.innerHTML = `<div class="reply-card">${this.esc(j.reply ?? "（空回复）")}</div>`;
-      }
-    } catch (err) {
-      this.replyBox.innerHTML = `<div class="reply-card">❌ 请求失败：${this.esc(String(err))}<br>提示：请通过 python app.py 启动后端后访问本页。</div>`;
-    } finally {
-      this.sendBtn.disabled = false;
-      this.input.focus();
+  private renderConnectors() {
+    this.connSel.innerHTML = "";
+    for (const c of this.connectors) {
+      const chip = document.createElement("button");
+      chip.className = "conn-chip" + (c.enabled ? " on" : "");
+      chip.innerHTML = `${c.icon} ${esc(c.name)}`;
+      chip.title = c.desc;
+      chip.onclick = async () => {
+        const r = await fetch("/api/connector/toggle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: c.id, enabled: !c.enabled }) });
+        const j = await r.json(); this.connectors = j.connectors; this.renderConnectors();
+      };
+      this.connSel.appendChild(chip);
     }
   }
+
+  private greet() {
+    this.bubble("bot", "你好，我是 imageAI（由 WikiGroup 开发）。可以选择模型、开启连接器，试试「北京天气」「计算 128*64」或直接聊天、生图～");
+  }
+
+  private currentModel(): string {
+    return (this.modelSel.querySelector(".on") as HTMLElement)?.dataset.mid ?? "";
+  }
+  private bubble(role: string, html: string): HTMLElement {
+    const d = document.createElement("div");
+    d.className = "msg " + role;
+    d.innerHTML = html;
+    this.box.appendChild(d);
+    this.box.scrollTop = this.box.scrollHeight;
+    return d;
+  }
+
+  private thinkingBlock(text: string): string {
+    return `<details class="think" open><summary>🧠 深入剖析问题中…</summary><div class="think-body">${esc(text).replace(/\n/g, "<br>")}</div></details>`;
+  }
+
+  private async submit() {
+    const text = this.input.value.trim();
+    if (!text || this.busy) return;
+    this.busy = true; this.sendBtn.disabled = true;
+    this.input.value = "";
+    this.bubble("user", esc(text).replace(/\n/g, "<br>"));
+    const wait = this.bubble("bot", '<span class="dots"><i></i><i></i><i></i></span>');
+    let resp: ChatResp | null = null;
+    try {
+      const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: this.mode, text, model: this.currentModel() }) });
+      resp = await r.json();
+    } catch { /* 网络异常也走优雅提示 */ }
+    if (!resp) { wait.innerHTML = "服务暂时不可用，请稍后再试。"; this.busy = false; this.sendBtn.disabled = false; return; }
+    const srcTags = (resp.sources ?? []).map(s => `<span class="src">${s.icon} ${esc(s.name)}·连接器</span>`).join("");
+    const think = resp.thinking ? this.thinkingBlock(resp.thinking) : "";
+    if (resp.image_svg) wait.innerHTML = `${think}<div class="art">${resp.image_svg}</div><p>${esc(resp.reply ?? "")}</p>${srcTags}`;
+    else if (resp.image) wait.innerHTML = `${think}<img class="genimg" src="data:image/png;base64,${resp.image}"><p>${esc(resp.reply ?? "")}</p>${srcTags}`;
+    else wait.innerHTML = `${think}<p>${esc(resp.reply ?? "").replace(/\n/g, "<br>")}</p>${srcTags}`;
+    const tb = wait.querySelector(".think-body");
+    if (tb) { tb.innerHTML = ""; this.typeInto(tb as HTMLElement, (resp.thinking ?? "").split("\n")); }
+    this.box.scrollTop = this.box.scrollHeight;
+    this.busy = false; this.sendBtn.disabled = false; this.input.focus();
+  }
+
+  private async typeInto(el: HTMLElement, lines: string[]) {
+    for (const line of lines) {
+      const p = document.createElement("div");
+      el.appendChild(p);
+      for (const ch of line) { p.textContent += ch; await new Promise(r => setTimeout(r, 12)); }
+      el.parentElement!.parentElement!.scrollTop = 9e9;
+    }
+    const sum = el.parentElement!.querySelector("summary");
+    if (sum) sum.innerHTML = "🧠 已完成深度剖析（点击展开/收起）";
+  }
 }
 
-/* ---------------- 滚动入场动画 ---------------- */
-function initScrollReveal(): void {
-  const io = new IntersectionObserver(
-    (entries) => {
-      for (const e of entries) {
-        if (e.isIntersecting) {
-          e.target.classList.add("visible");
-          io.unobserve(e.target);
-        }
-      }
-    },
-    { threshold: 0.15 },
-  );
-  document.querySelectorAll(".card").forEach((c) => io.observe(c));
+function initReveal() {
+  const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { (e.target as HTMLElement).classList.add("show"); io.unobserve(e.target); } }), { threshold: .12 });
+  document.querySelectorAll(".card,.model-card,.conn-card").forEach(x => io.observe(x));
 }
 
-/* ---------------- 主入口 ---------------- */
-async function main(): Promise<void> {
-  new StarField("stars");
-  initScrollReveal();
-  new Playground();
-
-  const tw = new Typewriter("typewriter");
-  const demoText =
-    "你好！我是 imageAI 🤖\n" +
-    "我已接入真实大模型，支持：多轮对话、流式输出、文生图、图像理解、语音合成/识别、翻译、摘要、代码生成与 Function-Calling Agent。\n" +
-    "向下滚动了解功能，或在「在线体验」里直接和我练习吧！";
-  await tw.type(demoText);
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  void main();
+addEventListener("DOMContentLoaded", () => {
+  const cv = document.getElementById("stars") as HTMLCanvasElement;
+  if (cv) new StarField(cv);
+  const tw = document.getElementById("typewriter");
+  if (tw) new Typewriter(tw as HTMLElement, "我是 imageAI，一个名字，全部 AI 能力。对话、生图、看图、语音、翻译、连接器，全由 WikiGroup 精心打造。");
+  if (document.getElementById("chat-box")) new ChatApp();
+  initReveal();
 });
