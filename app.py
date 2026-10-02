@@ -15,6 +15,7 @@ from imageai import ImageAI
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 WEB_DIR = os.path.join(BASE_DIR, "web")           # TypeScript 前端源码 + 编译产物
 DIST_DIR = os.path.join(WEB_DIR, "dist")          # tsc 编译输出（main.js / main.css）
+ROOT_HTML = os.path.join(BASE_DIR, "index.html")  # 仓库根目录的独立主页副本
 
 app = Flask(__name__, static_folder=DIST_DIR, static_url_path="/static")
 ai = ImageAI()  # 自动读取 .env / 环境变量中的真实大模型配置

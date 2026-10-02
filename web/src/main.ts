@@ -95,9 +95,15 @@ class Typewriter {
 }
 
 /* ---------------- API 调用 ---------------- */
+// 页面可通过 window.IMAGEAI_API 覆盖接口地址（默认同源 /api，由 Flask 提供）
+interface Window { IMAGEAI_API?: string }
+
 async function callApi(mode: Mode, text: string): Promise<ApiResponse> {
+  if (location.protocol === "file:" && !window.IMAGEAI_API) {
+    throw new Error("当前以 file:// 打开，无法直连大模型。请运行 `python app.py` 后访问 http://localhost:8000");
+  }
   const body: ApiRequest = { mode, text };
-  const res = await fetch("/api", {
+  const res = await fetch(window.IMAGEAI_API ?? "/api", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

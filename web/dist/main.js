@@ -73,10 +73,12 @@ class Typewriter {
             clearTimeout(this.timer);
     }
 }
-/* ---------------- API 调用 ---------------- */
 async function callApi(mode, text) {
+    if (location.protocol === "file:" && !window.IMAGEAI_API) {
+        throw new Error("当前以 file:// 打开，无法直连大模型。请运行 `python app.py` 后访问 http://localhost:8000");
+    }
     const body = { mode, text };
-    const res = await fetch("/api", {
+    const res = await fetch(window.IMAGEAI_API ?? "/api", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

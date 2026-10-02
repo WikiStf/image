@@ -61,8 +61,20 @@ print(ai.vision("图里有什么？", "photo.jpg"))  # 图像理解
 python -m imageai                       # 交互式聊天（流式输出）
 python -m imageai -p "写一首诗"          # 单次提问
 python -m imageai --draw "海报：极简风" -o poster.png   # 生图
-python app.py                           # 打开 http://localhost:8000 网页版
+python app.py                           # 打开 http://localhost:8000 网页版（主页 + 在线体验）
 python examples/full_demo.py            # 全功能示例
+```
+
+### 5. HTML 主页在哪？
+
+- **根目录 `index.html`**：独立单文件主页（内联了全部 CSS/JS），双击即可用浏览器打开预览外观；因走 `file://` 协议无法直连大模型，在线体验区会提示改用下面的方式运行。
+- **`web/index.html`**：主页源文件（配合 `web/dist/main.js` / `main.css`，由 TypeScript 编译）。
+- 推荐通过 Flask 运行以获得完整的大模型对话能力：
+
+```bash
+python app.py                # → http://localhost:8000 （主页 + 聊天/生图/翻译体验区）
+# 或仅静态预览主页：
+python -m http.server 8017   # → http://localhost:8017/index.html
 ```
 
 ## 📁 项目结构

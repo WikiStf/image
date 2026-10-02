@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>imageAI · 全能 AI，接入真实大模型</title>
+  <style>
+/* imageAI 主页样式 —— 深空渐变 + 玻璃拟态 + 动画 */
+:root {
+  --bg1: #0b1026;
+  --bg2: #131a3a;
+  --accent: #6c5ce7;
+  --accent2: #00cec9;
+  --text: #e8ecff;
+  --muted: #9aa3c7;
+  --glass: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.12);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  background: linear-gradient(160deg, var(--bg1), var(--bg2) 60%, #0d2137);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ---- 动态星空背景 ---- */
+#stars { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+
+/* ---- 顶部导航 ---- */
+nav {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 6vw;
+  backdrop-filter: blur(12px);
+  background: rgba(11, 16, 38, 0.7);
+  border-bottom: 1px solid var(--border);
+}
+.logo { font-size: 22px; font-weight: 800; letter-spacing: 1px; }
+.logo b { background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+nav ul { display: flex; gap: 26px; list-style: none; }
+nav a { color: var(--muted); text-decoration: none; transition: color .2s; }
+nav a:hover { color: var(--text); }
+
+/* ---- Hero ---- */
+.hero { text-align: center; padding: 90px 6vw 60px; }
+.hero h1 { font-size: clamp(34px, 6vw, 64px); line-height: 1.15; }
+.gradient-text {
+  background: linear-gradient(92deg, #a78bfa 10%, #22d3ee 50%, #a78bfa 90%);
+  background-size: 200% auto;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: shine 4s linear infinite;
+}
+@keyframes shine { to { background-position: 200% center; } }
+.hero p.sub { color: var(--muted); margin: 18px auto 34px; max-width: 640px; font-size: 17px; line-height: 1.7; }
+.badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px; font-size: 13px;
+  background: var(--glass); border: 1px solid var(--border); color: var(--accent2);
+  margin-bottom: 22px;
+}
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: pulse 1.6s infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,.6);} 50% { box-shadow: 0 0 0 7px rgba(34,197,94,0);} }
+
+.btn {
+  display: inline-block; padding: 13px 30px; border-radius: 12px; border: 0;
+  font-size: 16px; cursor: pointer; text-decoration: none; transition: transform .15s, box-shadow .2s;
+}
+.btn-primary { background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #fff; box-shadow: 0 6px 24px rgba(108, 92, 231, .4); }
+.btn-ghost { background: var(--glass); border: 1px solid var(--border); color: var(--text); margin-left: 12px; }
+.btn:hover { transform: translateY(-2px); }
+
+/* ---- 打字机演示框 ---- */
+.demo { max-width: 720px; margin: 44px auto 0; text-align: left; }
+.chat-window {
+  background: var(--glass); border: 1px solid var(--border); border-radius: 16px;
+  padding: 18px 20px; min-height: 120px; backdrop-filter: blur(8px);
+  box-shadow: 0 20px 60px rgba(0,0,0,.35);
+}
+.chat-window .who { font-size: 13px; color: var(--accent2); margin-bottom: 8px; }
+#typewriter { white-space: pre-wrap; line-height: 1.7; font-size: 15px; min-height: 60px; }
+.cursor { display: inline-block; width: 8px; height: 18px; background: var(--accent2); vertical-align: -3px; animation: blink .8s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ---- 功能区卡片 ---- */
+section.features { padding: 70px 6vw; }
+h2.title { text-align: center; font-size: 32px; margin-bottom: 40px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; max-width: 1100px; margin: 0 auto; }
+.card {
+  background: var(--glass); border: 1px solid var(--border); border-radius: 16px;
+  padding: 26px 22px; transition: transform .25s, border-color .25s, box-shadow .25s;
+  opacity: 0; transform: translateY(24px);
+}
+.card.visible { opacity: 1; transform: translateY(0); }
+.card:hover { transform: translateY(-6px); border-color: var(--accent); box-shadow: 0 14px 40px rgba(108,92,231,.25); }
+.card .icon { font-size: 34px; margin-bottom: 12px; }
+.card h3 { font-size: 18px; margin-bottom: 8px; }
+.card p { color: var(--muted); font-size: 14px; line-height: 1.6; }
+
+/* ---- 体验区 ---- */
+section.playground { padding: 40px 6vw 80px; max-width: 860px; margin: 0 auto; }
+.pg-bar { display: flex; gap: 10px; margin: 18px 0; flex-wrap: wrap; }
+.chip {
+  padding: 8px 16px; border-radius: 999px; cursor: pointer; font-size: 14px;
+  background: var(--glass); border: 1px solid var(--border); color: var(--muted); transition: all .2s;
+}
+.chip.active, .chip:hover { color: #fff; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-color: transparent; }
+.pg-input { display: flex; gap: 10px; }
+.pg-input input {
+  flex: 1; padding: 13px 16px; border-radius: 12px; font-size: 15px;
+  background: rgba(0,0,0,.25); border: 1px solid var(--border); color: var(--text); outline: none;
+}
+.pg-input input:focus { border-color: var(--accent2); }
+#pg-reply { margin-top: 18px; }
+.reply-card { background: var(--glass); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; line-height: 1.7; white-space: pre-wrap; }
+.reply-card img { max-width: 340px; border-radius: 10px; display: block; margin-top: 10px; }
+.thinking { color: var(--muted); }
+
+footer { text-align: center; padding: 30px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); }
+
+@media (max-width: 640px) { nav ul { display: none; } }
+
+</style>
+</head>
+<body>
+  <canvas id="stars"></canvas>
+
+  <nav>
+    <div class="logo">🤖 <b>imageAI</b></div>
+    <ul>
+      <li><a href="#features">功能</a></li>
+      <li><a href="#playground">在线体验</a></li>
+      <li><a href="#quickstart">快速开始</a></li>
+    </ul>
+  </nav>
+
+  <!-- Hero -->
+  <header class="hero">
+    <div class="badge"><span class="pulse"></span> 已接入真实大模型：<span id="model-name">{{ model }}</span></div>
+    <h1>一个名字，<span class="gradient-text">全部 AI 能力</span></h1>
+    <p class="sub">imageAI 支持对话、文生图、图像理解、语音合成/识别、翻译、摘要、代码生成与 Function-Calling Agent。一行代码接入 OpenAI / DeepSeek / Kimi / 通义千问 / Ollama 等任意兼容大模型。</p>
+    <a class="btn btn-primary" href="#playground">立即体验</a>
+    <a class="btn btn-ghost" href="#quickstart">查看用法</a>
+
+    <div class="demo">
+      <div class="chat-window">
+        <div class="who">imageAI 正在说话</div>
+        <div id="typewriter"></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 功能区 -->
+  <section class="features" id="features">
+    <h2 class="title">✨ 支持的 AI 能力</h2>
+    <div class="grid">
+      <div class="card"><div class="icon">💬</div><h3>多轮对话</h3><p>自动维护上下文记忆，支持流式打字机输出，兼容 reasoning 模型的思考过程。</p></div>
+      <div class="card"><div class="icon">🎨</div><h3>文生图 / 图像编辑</h3><p>一句描述生成图片；双通道兼容 images 端点与聊天式图像模型，支持局部重绘。</p></div>
+      <div class="card"><div class="icon">👁</div><h3>图像理解</h3><p>上传本地图片或 URL，让视觉大模型为你解读内容、提取信息、回答提问。</p></div>
+      <div class="card"><div class="icon">🔊</div><h3>语音合成 / 识别</h3><p>文本转自然语音（TTS），音频转文字（STT），支持多种音色。</p></div>
+      <div class="card"><div class="icon">🌐</div><h3>翻译 / 摘要 / 改写</h3><p>多语言互译、长文摘要、风格改写、信息抽取、文本分类，开箱即用。</p></div>
+      <div class="card"><div class="icon">🛠</div><h3>Function Calling</h3><p>注册 Python 工具函数即可构建 Agent，自动完成“调用→执行→回传”循环。</p></div>
+      <div class="card"><div class="icon">🧮</div><h3>向量化 Embedding</h3><p>文本转向量，为检索增强（RAG）、聚类、相似度搜索提供基础能力。</p></div>
+      <div class="card"><div class="icon">💻</div><h3>代码生成</h3><p>按需求生成 Python / JS 等代码，并可通过工具循环自动运行与自我修正。</p></div>
+      <div class="card"><div class="icon">🔌</div><h3>任意大模型接入</h3><p>OpenAI 兼容协议：OpenAI、DeepSeek、Kimi、通义、智谱、Ollama 本地模型皆可。</p></div>
+    </div>
+  </section>
+
+  <!-- 在线体验区 -->
+  <section class="playground" id="playground">
+    <h2 class="title">🚀 在线体验（和大模型练习）</h2>
+    <div class="pg-bar">
+      <div class="chip active" data-mode="chat">💬 对话</div>
+      <div class="chip" data-mode="draw">🎨 生图</div>
+      <div class="chip" data-mode="translate">🌐 译成英文</div>
+    </div>
+    <div class="pg-input">
+      <input id="pg-input-el" type="text" placeholder="向 imageAI 提问，回车发送…">
+      <button id="pg-send" class="btn btn-primary">发送</button>
+    </div>
+    <div id="pg-reply"></div>
+  </section>
+
+  <!-- 快速开始 -->
+  <section class="features" id="quickstart">
+    <h2 class="title">📦 快速开始</h2>
+    <div class="grid" style="max-width:760px">
+      <div class="card" style="grid-column:1/-1">
+        <div class="icon">⌨️</div>
+        <h3>Python SDK</h3>
+        <pre style="background:rgba(0,0,0,.3);border-radius:10px;padding:14px;overflow:auto;font-size:13px;line-height:1.7"><code>from imageai import ImageAI
+ai = ImageAI()                      # 自动读取 .env 配置，直连真实大模型
+print(ai.chat("你好，介绍一下你自己"))
+ai.generate_image("赛博朋克风格的猫")
+print(ai.translate("床前明月光", target_lang="英文"))</code></pre>
+      </div>
+      <div class="card" style="grid-column:1/-1">
+        <div class="icon">🖥</div>
+        <h3>启动本页服务</h3>
+        <pre style="background:rgba(0,0,0,.3);border-radius:10px;padding:14px;overflow:auto;font-size:13px;line-height:1.7"><code>cp .env.example .env   # 填入 IMAGEAI_API_KEY / BASE_URL / MODEL
+python app.py          # 打开 http://localhost:8000 即为本主页</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <footer>imageAI · 全能 AI 引擎 · 前端由 TypeScript 构建 ❤️</footer>
+
+  <script>
+"use strict";
+/** imageAI 主页交互逻辑（TypeScript，严格模式） */
+/* ---------------- 星空背景动画 ---------------- */
+class StarField {
+    constructor(canvasId) {
+        this.stars = [];
+        this.loop = () => {
+            const { ctx, canvas } = this;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (const st of this.stars) {
+                st.y += st.s;
+                st.o += 0.01;
+                if (st.y > canvas.height) {
+                    st.y = -2;
+                    st.x = Math.random() * canvas.width;
+                }
+                ctx.globalAlpha = 0.3 + Math.abs(Math.sin(st.o)) * 0.7;
+                ctx.fillStyle = "#cdd6ff";
+                ctx.beginPath();
+                ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1;
+            requestAnimationFrame(this.loop);
+        };
+        this.canvas = document.getElementById(canvasId);
+        this.ctx = this.canvas.getContext("2d");
+        this.resize();
+        window.addEventListener("resize", () => this.resize());
+        this.loop();
+    }
+    resize() {
+        this.canvas.width = window.innerWidth;
+        this.canvas.height = window.innerHeight;
+        const count = Math.floor((this.canvas.width * this.canvas.height) / 9000);
+        this.stars = Array.from({ length: count }, () => ({
+            x: Math.random() * this.canvas.width,
+            y: Math.random() * this.canvas.height,
+            r: Math.random() * 1.5 + 0.3,
+            s: Math.random() * 0.35 + 0.05,
+            o: Math.random(),
+        }));
+    }
+}
+/* ---------------- 打字机效果 ---------------- */
+class Typewriter {
+    constructor(elId) {
+        this.queue = [];
+        this.timer = null;
+        this.el = document.getElementById(elId);
+        this.cursor = document.createElement("span");
+        this.cursor.className = "cursor";
+    }
+    type(text, speed = 45) {
+        return new Promise((resolve) => {
+            this.queue = [...text];
+            this.el.textContent = "";
+            this.el.appendChild(this.cursor);
+            const step = () => {
+                const ch = this.queue.shift();
+                if (ch === undefined) {
+                    resolve();
+                    return;
+                }
+                this.el.insertBefore(document.createTextNode(ch), this.cursor);
+                this.timer = window.setTimeout(step, speed);
+            };
+            step();
+        });
+    }
+    stop() {
+        if (this.timer !== null)
+            clearTimeout(this.timer);
+    }
+}
+async function callApi(mode, text) {
+    if (location.protocol === "file:" && !window.IMAGEAI_API) {
+        throw new Error("当前以 file:// 打开，无法直连大模型。请运行 `python app.py` 后访问 http://localhost:8000");
+    }
+    const body = { mode, text };
+    const res = await fetch(window.IMAGEAI_API ?? "/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+    return (await res.json());
+}
+/* ---------------- 体验区（练习大模型） ---------------- */
+class Playground {
+    constructor() {
+        this.mode = "chat";
+        this.input = document.getElementById("pg-input-el");
+        this.replyBox = document.getElementById("pg-reply");
+        this.sendBtn = document.getElementById("pg-send");
+        document.querySelectorAll(".chip").forEach((chip) => {
+            chip.addEventListener("click", () => {
+                document.querySelectorAll(".chip").forEach((c) => c.classList.remove("active"));
+                chip.classList.add("active");
+                this.mode = chip.dataset.mode;
+                this.input.placeholder =
+                    this.mode === "draw" ? "描述你想画的图，例如：赛博朋克风格的猫…" :
+                        this.mode === "translate" ? "输入中文，自动翻译成英文…" :
+                            "向 imageAI 提问，回车发送…";
+            });
+        });
+        this.sendBtn.addEventListener("click", () => this.send());
+        this.input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter")
+                this.send();
+        });
+    }
+    esc(s) {
+        const d = document.createElement("div");
+        d.textContent = s;
+        return d.innerHTML;
+    }
+    async send() {
+        const text = this.input.value.trim();
+        if (!text)
+            return;
+        this.input.value = "";
+        this.sendBtn.disabled = true;
+        this.replyBox.innerHTML = `<div class="reply-card thinking">🧠 ${this.mode === "draw" ? "绘画中，请稍候…" : "思考中…"}</div>`;
+        try {
+            const j = await callApi(this.mode, text);
+            if (j.error) {
+                this.replyBox.innerHTML = `<div class="reply-card">❌ ${this.esc(j.error)}</div>`;
+            }
+            else if (j.image) {
+                this.replyBox.innerHTML =
+                    `<div class="reply-card">${this.esc(j.reply ?? "")}` +
+                        `<img src="data:image/png;base64,${j.image}" alt="generated"></div>`;
+            }
+            else {
+                this.replyBox.innerHTML = `<div class="reply-card">${this.esc(j.reply ?? "（空回复）")}</div>`;
+            }
+        }
+        catch (err) {
+            this.replyBox.innerHTML = `<div class="reply-card">❌ 请求失败：${this.esc(String(err))}<br>提示：请通过 python app.py 启动后端后访问本页。</div>`;
+        }
+        finally {
+            this.sendBtn.disabled = false;
+            this.input.focus();
+        }
+    }
+}
+/* ---------------- 滚动入场动画 ---------------- */
+function initScrollReveal() {
+    const io = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+            if (e.isIntersecting) {
+                e.target.classList.add("visible");
+                io.unobserve(e.target);
+            }
+        }
+    }, { threshold: 0.15 });
+    document.querySelectorAll(".card").forEach((c) => io.observe(c));
+}
+/* ---------------- 主入口 ---------------- */
+async function main() {
+    new StarField("stars");
+    initScrollReveal();
+    new Playground();
+    const tw = new Typewriter("typewriter");
+    const demoText = "你好！我是 imageAI 🤖\n" +
+        "我已接入真实大模型，支持：多轮对话、流式输出、文生图、图像理解、语音合成/识别、翻译、摘要、代码生成与 Function-Calling Agent。\n" +
+        "向下滚动了解功能，或在「在线体验」里直接和我练习吧！";
+    await tw.type(demoText);
+}
+document.addEventListener("DOMContentLoaded", () => {
+    void main();
+});
+
+</script>
+</body>
+</html>
