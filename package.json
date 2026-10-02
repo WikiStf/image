@@ -1,0 +1,18 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "**imageAI** 是一个开箱即用的全能 AI 框架/助手：通过 OpenAI 兼容协议一行代码接入 **任意真实大模型**（OpenAI、DeepSeek、Kimi、通义千问、智谱 GLM、本地 Ollama/vLLM 等），支持几乎所有主流 AI 能力。",
+  "main": "index.js",
+  "directories": {
+    "example": "examples"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,22 @@
+[project]
+name = "imageai"
+version = "1.0.0"
+description = "imageAI —— 接入真实大模型的全能 AI（对话/视觉/文生图/语音/Embedding/Agent）"
+requires-python = ">=3.9"
+dependencies = [
+    "openai>=1.30",
+    "requests>=2.28",
+]
+
+[project.optional-dependencies]
+web = ["flask>=3.0"]
+
+[project.scripts]
+imageai = "imageai.cli.main:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["imageai*"]
