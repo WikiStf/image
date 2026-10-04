@@ -1,2 +1,2 @@
-# Logs and temp files
-*.log
+# Build artifacts
+dist/

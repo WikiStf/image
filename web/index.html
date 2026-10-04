@@ -3,92 +3,101 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>imageAI · 全能 AI，接入真实大模型</title>
+  <title>imageAI · WikiGroup 出品全能 AI</title>
   <link rel="stylesheet" href="/static/main.css">
 </head>
 <body>
   <canvas id="stars"></canvas>
 
   <nav>
-    <div class="logo">🤖 <b>imageAI</b></div>
+    <div class="logo">🤖 <b>imageAI</b><span class="byline">by WikiGroup</span></div>
     <ul>
-      <li><a href="#features">功能</a></li>
+      <li><a href="#models">模型家族</a></li>
+      <li><a href="#connectors">连接器</a></li>
       <li><a href="#playground">在线体验</a></li>
       <li><a href="#quickstart">快速开始</a></li>
     </ul>
   </nav>
 
-  <!-- Hero -->
   <header class="hero">
-    <div class="badge"><span class="pulse"></span> 已接入真实大模型：<span id="model-name">{{ model }}</span></div>
+    <div class="badge"><span class="pulse"></span> {{ status }}：<span id="model-name">{{ model }}</span> · imageAI by WikiGroup</div>
     <h1>一个名字，<span class="gradient-text">全部 AI 能力</span></h1>
-    <p class="sub">imageAI 支持对话、文生图、图像理解、语音合成/识别、翻译、摘要、代码生成与 Function-Calling Agent。一行代码接入 OpenAI / DeepSeek / Kimi / 通义千问 / Ollama 等任意兼容大模型。</p>
+    <p class="sub">imageAI 由 WikiGroup 开发：对话、文生图、图像理解、语音、翻译、Function-Calling Agent 与连接器工具生态。四大自研模型 image1.0 / image Max / image UI / image Ultra，接入真实大模型即开即用。</p>
     <a class="btn btn-primary" href="#playground">立即体验</a>
-    <a class="btn btn-ghost" href="#quickstart">查看用法</a>
+    <a class="btn btn-ghost" href="#models">模型家族</a>
 
-    <div class="demo">
-      <div class="chat-window">
-        <div class="who">imageAI 正在说话</div>
-        <div id="typewriter"></div>
-      </div>
-    </div>
+    <div class="demo"><div class="chat-window">
+      <div class="who">imageAI 正在说话</div>
+      <div id="typewriter"></div>
+    </div></div>
   </header>
 
-  <!-- 功能区 -->
-  <section class="features" id="features">
-    <h2 class="title">✨ 支持的 AI 能力</h2>
+  <section class="features" id="models">
+    <h2 class="title">🧬 imageAI 模型家族</h2>
+    <div class="grid grid-models">
+      <div class="card model-static"><div class="icon">🟢</div><h3>image1.0</h3><p>轻量旗舰的快枪手。⚡ 极速响应，直接给出答案，适合日常问答与写作。</p></div>
+      <div class="card model-static"><div class="icon">🔵</div><h3>image Max</h3><p>性能天花板。⚡ 快速直答不绕弯，复杂任务照样一步到位。</p></div>
+      <div class="card model-static deep"><div class="icon">🟣</div><h3>image UI</h3><p>🧠 深度思考型。回答前展示「深入剖析问题」全过程，边想边说。</p></div>
+      <div class="card model-static deep"><div class="icon">🟪</div><h3>image Ultra</h3><p>🧠 极限推理型。逐层拆解、层层推演，完整呈现思考链条。</p></div>
+    </div>
+  </section>
+
+  <section class="features" id="connectors">
+    <h2 class="title">🔌 连接器（像豆包一样连接万物）</h2>
     <div class="grid">
-      <div class="card"><div class="icon">💬</div><h3>多轮对话</h3><p>自动维护上下文记忆，支持流式打字机输出，兼容 reasoning 模型的思考过程。</p></div>
-      <div class="card"><div class="icon">🎨</div><h3>文生图 / 图像编辑</h3><p>一句描述生成图片；双通道兼容 images 端点与聊天式图像模型，支持局部重绘。</p></div>
-      <div class="card"><div class="icon">👁</div><h3>图像理解</h3><p>上传本地图片或 URL，让视觉大模型为你解读内容、提取信息、回答提问。</p></div>
-      <div class="card"><div class="icon">🔊</div><h3>语音合成 / 识别</h3><p>文本转自然语音（TTS），音频转文字（STT），支持多种音色。</p></div>
-      <div class="card"><div class="icon">🌐</div><h3>翻译 / 摘要 / 改写</h3><p>多语言互译、长文摘要、风格改写、信息抽取、文本分类，开箱即用。</p></div>
-      <div class="card"><div class="icon">🛠</div><h3>Function Calling</h3><p>注册 Python 工具函数即可构建 Agent，自动完成“调用→执行→回传”循环。</p></div>
-      <div class="card"><div class="icon">🧮</div><h3>向量化 Embedding</h3><p>文本转向量，为检索增强（RAG）、聚类、相似度搜索提供基础能力。</p></div>
-      <div class="card"><div class="icon">💻</div><h3>代码生成</h3><p>按需求生成 Python / JS 等代码，并可通过工具循环自动运行与自我修正。</p></div>
-      <div class="card"><div class="icon">🔌</div><h3>任意大模型接入</h3><p>OpenAI 兼容协议：OpenAI、DeepSeek、Kimi、通义、智谱、Ollama 本地模型皆可。</p></div>
+      <div class="card conn-card"><div class="icon">🕐</div><h3>时间日期</h3><p>随时获取当前日期、时间与星期。</p></div>
+      <div class="card conn-card"><div class="icon">🧮</div><h3>计算器</h3><p>四则运算与函数计算，随口一问即得结果。</p></div>
+      <div class="card conn-card"><div class="icon">🌤</div><h3>天气查询</h3><p>连接气象数据源，一句话查城市天气。</p></div>
+      <div class="card conn-card"><div class="icon">🔎</div><h3>网页搜索</h3><p>联网检索关键词，返回资料摘要。</p></div>
+      <div class="card conn-card"><div class="icon">🌐</div><h3>翻译服务</h3><p>多语言通道，随问随译。</p></div>
+      <div class="card conn-card"><div class="icon">💻</div><h3>终端命令</h3><p>安全白名单执行本机命令。</p></div>
+      <div class="card conn-card"><div class="icon">📝</div><h3>个人笔记</h3><p>让 AI 帮你记住要点，随时回顾。</p></div>
+      <div class="card conn-card"><div class="icon">➕</div><h3>自定义扩展</h3><p>ConnectorHub.register() 一行注册你自己的连接器。</p></div>
     </div>
   </section>
 
-  <!-- 在线体验区 -->
   <section class="playground" id="playground">
-    <h2 class="title">🚀 在线体验（和大模型练习）</h2>
-    <div class="pg-bar">
-      <div class="chip active" data-mode="chat">💬 对话</div>
-      <div class="chip" data-mode="draw">🎨 生图</div>
-      <div class="chip" data-mode="translate">🌐 译成英文</div>
+    <h2 class="title">🚀 在线体验（和真实大模型练习）</h2>
+    <div class="pg-panel glass">
+      <div id="model-select" class="model-row"></div>
+      <div class="conn-row">🔗 连接器：<span id="conn-chips"></span></div>
+      <div class="pg-tabs">
+        <button class="pg-tab active" data-mode="chat">💬 对话</button>
+        <button class="pg-tab" data-mode="draw">🎨 生图</button>
+        <button class="pg-tab ghost-new" id="new-chat">✨ 新对话</button>
+      </div>
+      <div id="chat-box"></div>
+      <div class="pg-input">
+        <textarea id="chat-input" rows="2" placeholder="向 imageAI 提问，回车发送…"></textarea>
+        <button id="chat-send" class="btn btn-primary">发送</button>
+      </div>
     </div>
-    <div class="pg-input">
-      <input id="pg-input-el" type="text" placeholder="向 imageAI 提问，回车发送…">
-      <button id="pg-send" class="btn btn-primary">发送</button>
-    </div>
-    <div id="pg-reply"></div>
   </section>
 
-  <!-- 快速开始 -->
   <section class="features" id="quickstart">
     <h2 class="title">📦 快速开始</h2>
     <div class="grid" style="max-width:760px">
       <div class="card" style="grid-column:1/-1">
-        <div class="icon">⌨️</div>
-        <h3>Python SDK</h3>
-        <pre style="background:rgba(0,0,0,.3);border-radius:10px;padding:14px;overflow:auto;font-size:13px;line-height:1.7"><code>from imageai import ImageAI
-ai = ImageAI()                      # 自动读取 .env 配置，直连真实大模型
-print(ai.chat("你好，介绍一下你自己"))
+        <div class="icon">⌨️</div><h3>Python SDK</h3>
+        <pre><code>from imageai import ImageAI
+ai = ImageAI()                       # 无 Key 也能跑（本地演示模式），配 Key 直连真实大模型
+print(ai.chat("你好"))                # image1.0 / image Max 快速直答
+print(ai.chat("分析量子计算", model="imageUltra"))   # 思考系模型，附带剖析过程
 ai.generate_image("赛博朋克风格的猫")
 print(ai.translate("床前明月光", target_lang="英文"))</code></pre>
       </div>
       <div class="card" style="grid-column:1/-1">
-        <div class="icon">🖥</div>
-        <h3>启动本页服务</h3>
-        <pre style="background:rgba(0,0,0,.3);border-radius:10px;padding:14px;overflow:auto;font-size:13px;line-height:1.7"><code>cp .env.example .env   # 填入 IMAGEAI_API_KEY / BASE_URL / MODEL
-python app.py          # 打开 http://localhost:8000 即为本主页</code></pre>
+        <div class="icon">🖥</div><h3>Web 界面</h3>
+        <pre><code>pip install flask openai requests
+python app.py          # → http://localhost:8000（主页 + 在线体验 + 连接器开关）</code></pre>
       </div>
     </div>
   </section>
 
-  <footer>imageAI · 全能 AI 引擎 · 前端由 TypeScript 构建 ❤️</footer>
+  <footer>
+    🤖 imageAI · 由 <b>WikiGroup</b> 开发 · © 2026
+  </footer>
 
-  <script src="/static/main.js" defer></script>
+  <script src="/static/main.js"></script>
 </body>
 </html>

@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>imageAI · WikiGroup 出品全能 AI</title>
+  <style>:root{
+  --bg:#070b1a; --ink:#e8ecff; --sub:#9aa6d0; --card:rgba(255,255,255,.05);
+  --line:rgba(140,160,255,.16); --acc:#7c6cff; --acc2:#3ec6ff; --ok:#4ade80;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--ink);overflow-x:hidden;line-height:1.6}
+#stars{position:fixed;inset:0;z-index:0;pointer-events:none}
+body::before{content:"";position:fixed;width:60vmax;height:60vmax;left:-20vmax;top:-30vmax;border-radius:50%;
+  background:radial-gradient(circle,#5b4bff33,transparent 65%);filter:blur(40px);z-index:0;animation:drift 26s ease-in-out infinite alternate}
+body::after{content:"";position:fixed;width:50vmax;height:50vmax;right:-18vmax;bottom:-24vmax;border-radius:50%;
+  background:radial-gradient(circle,#0ea5e933,transparent 65%);filter:blur(40px);z-index:0;animation:drift 32s -6s ease-in-out infinite alternate-reverse}
+@keyframes drift{to{transform:translate(12vmax,8vmax) scale(1.15)}}
+nav,header,section,footer{position:relative;z-index:1}
+
+nav{display:flex;justify-content:space-between;align-items:center;padding:18px 6vw;position:sticky;top:0;
+  backdrop-filter:blur(14px);background:rgba(7,11,26,.55);border-bottom:1px solid var(--line);z-index:9}
+.logo{font-size:20px;font-weight:800}
+.byline{font-size:11px;color:var(--acc2);border:1px solid var(--line);padding:2px 8px;border-radius:99px;margin-left:10px;vertical-align:2px}
+nav ul{display:flex;gap:26px;list-style:none}
+nav a{color:var(--sub);text-decoration:none;font-size:14px;transition:.25s}
+nav a:hover{color:#fff}
+
+.hero{text-align:center;padding:9vh 6vw 6vh}
+.badge{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--sub);
+  border:1px solid var(--line);background:var(--card);padding:7px 16px;border-radius:99px;margin-bottom:26px}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 #4ade8066}50%{box-shadow:0 0 0 7px #4ade8000}}
+h1{font-size:clamp(34px,6vw,64px);letter-spacing:1px}
+.gradient-text{background:linear-gradient(90deg,var(--acc),var(--acc2),#f0abfc,var(--acc));background-size:300% 100%;
+  -webkit-background-clip:text;background-clip:text;color:transparent;animation:flow 6s linear infinite}
+@keyframes flow{to{background-position:300% 0}}
+.sub{max-width:760px;margin:18px auto 26px;color:var(--sub)}
+.btn{display:inline-block;margin:6px 8px;padding:12px 28px;border-radius:14px;font-size:15px;text-decoration:none;
+  border:0;cursor:pointer;transition:.25s;font-weight:600;color:#fff}
+.btn-primary{background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 8px 26px #7c6cff44}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 32px #7c6cff66}
+.btn-ghost{background:var(--card);border:1px solid var(--line)}
+.btn-ghost:hover{border-color:var(--acc)}
+.demo{margin-top:44px;display:flex;justify-content:center}
+.chat-window{max-width:640px;width:92%;min-height:86px;text-align:left;padding:20px 24px;border-radius:18px;
+  background:var(--card);border:1px solid var(--line);backdrop-filter:blur(10px)}
+.who{font-size:12px;color:var(--acc2);margin-bottom:8px}
+#typewriter{min-height:44px}
+#typewriter::after{content:"▍";color:var(--acc);animation:blink .8s infinite}
+@keyframes blink{50%{opacity:0}}
+
+.features{padding:8vh 6vw}
+.title{text-align:center;font-size:clamp(24px,3.6vw,38px);margin-bottom:44px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;max-width:1100px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px;backdrop-filter:blur(8px);
+  transition:.35s;opacity:0;transform:translateY(26px)}
+.card.show{opacity:1;transform:none}
+.card:hover{transform:translateY(-6px);border-color:#7c6cff88;box-shadow:0 18px 40px #00000055,0 0 0 1px #7c6cff33 inset}
+.card .icon{font-size:30px;margin-bottom:12px}
+.card h3{margin-bottom:8px;font-size:17px}
+.card p{color:var(--sub);font-size:14px}
+.model-static.deep{border-color:#a855f755}
+.model-static.deep:hover{border-color:#a855f7aa;box-shadow:0 18px 40px #a855f722}
+pre{background:rgba(0,0,0,.35);border-radius:12px;padding:16px;overflow:auto;font-size:13px;line-height:1.8;border:1px solid var(--line)}
+
+.playground{padding:8vh 6vw}
+.glass{background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:24px;backdrop-filter:blur(12px)}
+.pg-panel{max-width:980px;margin:0 auto;padding:26px}
+.model-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px}
+.model-card{border:1px solid var(--line);border-radius:16px;padding:14px;cursor:pointer;transition:.25s;background:rgba(0,0,0,.2);
+  display:flex;flex-direction:column;gap:4px;opacity:0;transform:translateY(18px)}
+.model-card.show{opacity:1;transform:none}
+.model-card b{font-size:15px}.model-card small{color:var(--sub);font-size:12px}
+.model-card em{font-style:normal;font-size:11px;color:var(--acc2)}
+.model-card.deep em{color:#c084fc}
+.model-card.on{border-color:var(--acc);background:linear-gradient(135deg,#7c6cff22,#3ec6ff18);box-shadow:0 0 0 1px var(--acc) inset}
+.conn-row{font-size:13px;color:var(--sub);margin-bottom:14px}
+#conn-chips{display:inline-flex;flex-wrap:wrap;gap:8px;vertical-align:middle}
+.conn-chip{border:1px solid var(--line);background:rgba(0,0,0,.25);color:var(--sub);font-size:12px;
+  padding:5px 12px;border-radius:99px;cursor:pointer;transition:.2s}
+.conn-chip.on{color:#fff;border-color:var(--ok);background:#22c55e22}
+.pg-tabs{display:flex;gap:10px;margin-bottom:14px}
+.pg-tab{border:1px solid var(--line);background:transparent;color:var(--sub);padding:8px 20px;border-radius:12px;cursor:pointer;transition:.2s;font-size:14px}
+.pg-tab.active{background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;border-color:transparent}
+#chat-box{height:340px;overflow-y:auto;padding:6px 4px;display:flex;flex-direction:column;gap:10px;
+  border:1px solid var(--line);border-radius:16px;background:rgba(0,0,0,.22);margin-bottom:14px}
+.msg{max-width:82%;padding:11px 15px;border-radius:14px;font-size:14px;white-space:pre-wrap;word-break:break-word;animation:pop .25s}
+@keyframes pop{from{opacity:0;transform:translateY(8px)}}
+.msg.user{align-self:flex-end;background:linear-gradient(135deg,#4f46e5,#0ea5e9);border-bottom-right-radius:4px}
+.msg.bot{align-self:flex-start;background:#1b2240;border:1px solid var(--line);border-bottom-left-radius:4px}
+.msg.sys{align-self:center;background:transparent;color:var(--acc2);font-size:12px}
+.msg img.genimg,.msg .art svg{max-width:340px;width:100%;border-radius:12px;margin:8px 0;display:block}
+.think{border:1px dashed #a855f766;border-radius:12px;padding:8px 12px;margin-bottom:8px;background:#a855f70d}
+.think summary{cursor:pointer;color:#c084fc;font-size:13px;font-weight:600}
+.think-body{color:var(--sub);font-size:13px;margin-top:8px;line-height:1.9}
+.src{display:inline-block;font-size:11px;color:var(--ok);border:1px solid #22c55e55;border-radius:99px;padding:2px 10px;margin-top:6px}
+.dots i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--acc2);margin-right:5px;animation:bounce 1s infinite}
+.dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
+@keyframes bounce{30%{transform:translateY(-6px)}}
+.pg-input{display:flex;gap:10px}
+textarea{flex:1;resize:none;background:rgba(0,0,0,.3);color:var(--ink);border:1px solid var(--line);
+  border-radius:14px;padding:12px 16px;font-size:14px;font-family:inherit;outline:none;transition:.2s}
+textarea:focus{border-color:var(--acc)}
+
+footer{text-align:center;padding:34px;color:var(--sub);font-size:13px;border-top:1px solid var(--line)}
+footer b{color:var(--acc2)}
+@media(max-width:640px){nav ul{gap:14px}#chat-box{height:300px}}
+</style>
+</head>
+<body>
+  <canvas id="stars"></canvas>
+
+  <nav>
+    <div class="logo">🤖 <b>imageAI</b><span class="byline">by WikiGroup</span></div>
+    <ul>
+      <li><a href="#models">模型家族</a></li>
+      <li><a href="#connectors">连接器</a></li>
+      <li><a href="#playground">在线体验</a></li>
+      <li><a href="#quickstart">快速开始</a></li>
+    </ul>
+  </nav>
+
+  <header class="hero">
+    <div class="badge"><span class="pulse"></span> 本地演示模式：<span id="model-name">image1.0</span> · imageAI by WikiGroup</div>
+    <h1>一个名字，<span class="gradient-text">全部 AI 能力</span></h1>
+    <p class="sub">imageAI 由 WikiGroup 开发：对话、文生图、图像理解、语音、翻译、Function-Calling Agent 与连接器工具生态。四大自研模型 image1.0 / image Max / image UI / image Ultra，接入真实大模型即开即用。</p>
+    <a class="btn btn-primary" href="#playground">立即体验</a>
+    <a class="btn btn-ghost" href="#models">模型家族</a>
+
+    <div class="demo"><div class="chat-window">
+      <div class="who">imageAI 正在说话</div>
+      <div id="typewriter"></div>
+    </div></div>
+  </header>
+
+  <section class="features" id="models">
+    <h2 class="title">🧬 imageAI 模型家族</h2>
+    <div class="grid grid-models">
+      <div class="card model-static"><div class="icon">🟢</div><h3>image1.0</h3><p>轻量旗舰的快枪手。⚡ 极速响应，直接给出答案，适合日常问答与写作。</p></div>
+      <div class="card model-static"><div class="icon">🔵</div><h3>image Max</h3><p>性能天花板。⚡ 快速直答不绕弯，复杂任务照样一步到位。</p></div>
+      <div class="card model-static deep"><div class="icon">🟣</div><h3>image UI</h3><p>🧠 深度思考型。回答前展示「深入剖析问题」全过程，边想边说。</p></div>
+      <div class="card model-static deep"><div class="icon">🟪</div><h3>image Ultra</h3><p>🧠 极限推理型。逐层拆解、层层推演，完整呈现思考链条。</p></div>
+    </div>
+  </section>
+
+  <section class="features" id="connectors">
+    <h2 class="title">🔌 连接器（像豆包一样连接万物）</h2>
+    <div class="grid">
+      <div class="card conn-card"><div class="icon">🕐</div><h3>时间日期</h3><p>随时获取当前日期、时间与星期。</p></div>
+      <div class="card conn-card"><div class="icon">🧮</div><h3>计算器</h3><p>四则运算与函数计算，随口一问即得结果。</p></div>
+      <div class="card conn-card"><div class="icon">🌤</div><h3>天气查询</h3><p>连接气象数据源，一句话查城市天气。</p></div>
+      <div class="card conn-card"><div class="icon">🔎</div><h3>网页搜索</h3><p>联网检索关键词，返回资料摘要。</p></div>
+      <div class="card conn-card"><div class="icon">🌐</div><h3>翻译服务</h3><p>多语言通道，随问随译。</p></div>
+      <div class="card conn-card"><div class="icon">💻</div><h3>终端命令</h3><p>安全白名单执行本机命令。</p></div>
+      <div class="card conn-card"><div class="icon">📝</div><h3>个人笔记</h3><p>让 AI 帮你记住要点，随时回顾。</p></div>
+      <div class="card conn-card"><div class="icon">➕</div><h3>自定义扩展</h3><p>ConnectorHub.register() 一行注册你自己的连接器。</p></div>
+    </div>
+  </section>
+
+  <section class="playground" id="playground">
+    <h2 class="title">🚀 在线体验（和真实大模型练习）</h2>
+    <div class="pg-panel glass">
+      <div id="model-select" class="model-row"></div>
+      <div class="conn-row">🔗 连接器：<span id="conn-chips"></span></div>
+      <div class="pg-tabs">
+        <button class="pg-tab active" data-mode="chat">💬 对话</button>
+        <button class="pg-tab" data-mode="draw">🎨 生图</button>
+      </div>
+      <div id="chat-box"></div>
+      <div class="pg-input">
+        <textarea id="chat-input" rows="2" placeholder="向 imageAI 提问，回车发送…"></textarea>
+        <button id="chat-send" class="btn btn-primary">发送</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="quickstart">
+    <h2 class="title">📦 快速开始</h2>
+    <div class="grid" style="max-width:760px">
+      <div class="card" style="grid-column:1/-1">
+        <div class="icon">⌨️</div><h3>Python SDK</h3>
+        <pre><code>from imageai import ImageAI
+ai = ImageAI()                       # 无 Key 也能跑（本地演示模式），配 Key 直连真实大模型
+print(ai.chat("你好"))                # image1.0 / image Max 快速直答
+print(ai.chat("分析量子计算", model="imageUltra"))   # 思考系模型，附带剖析过程
+ai.generate_image("赛博朋克风格的猫")
+print(ai.translate("床前明月光", target_lang="英文"))</code></pre>
+      </div>
+      <div class="card" style="grid-column:1/-1">
+        <div class="icon">🖥</div><h3>Web 界面</h3>
+        <pre><code>pip install flask openai requests
+python app.py          # → http://localhost:8000（主页 + 在线体验 + 连接器开关）</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    🤖 imageAI · 由 <b>WikiGroup</b> 开发 · © 2026
+  </footer>
+
+  <script>"use strict";
+class StarField {
+    constructor(cv) {
+        this.cv = cv;
+        this.pts = [];
+        this.ctx = cv.getContext("2d");
+        this.resize();
+        addEventListener("resize", () => this.resize());
+        for (let i = 0; i < 140; i++)
+            this.pts.push(this.spawn(true));
+        requestAnimationFrame(() => this.tick());
+    }
+    resize() { this.cv.width = innerWidth; this.cv.height = innerHeight; }
+    spawn(anyY) { return { x: Math.random() * this.cv.width, y: anyY ? Math.random() * this.cv.height : -4, r: Math.random() * 1.6 + .3, s: Math.random() * .35 + .06, a: Math.random() }; }
+    tick() {
+        const { ctx, cv } = this;
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        for (const p of this.pts) {
+            p.y += p.s;
+            p.a += .02;
+            if (p.y > cv.height)
+                Object.assign(p, this.spawn(false));
+            ctx.globalAlpha = .35 + Math.abs(Math.sin(p.a)) * .65;
+            ctx.fillStyle = "#9db8ff";
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.r, 0, 7);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        requestAnimationFrame(() => this.tick());
+    }
+}
+class Typewriter {
+    constructor(el, text, speed = 45) {
+        this.el = el;
+        this.text = text;
+        this.speed = speed;
+        this.run();
+    }
+    async run() {
+        for (;;) {
+            this.el.textContent = "";
+            for (let i = 0; i < this.text.length; i++) {
+                this.el.textContent += this.text[i];
+                await new Promise(r => setTimeout(r, this.speed));
+            }
+            await new Promise(r => setTimeout(r, 3200));
+            while (this.el.textContent.length) {
+                this.el.textContent = this.el.textContent.slice(0, -1);
+                await new Promise(r => setTimeout(r, 18));
+            }
+        }
+    }
+}
+function esc(s) {
+    return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+class ChatApp {
+    constructor() {
+        this.models = [];
+        this.connectors = [];
+        this.mode = "chat";
+        this.busy = false;
+        this.box = document.getElementById("chat-box");
+        this.input = document.getElementById("chat-input");
+        this.sendBtn = document.getElementById("chat-send");
+        this.modelSel = document.getElementById("model-select");
+        this.connSel = document.getElementById("conn-chips");
+        this.bind();
+        this.loadModels();
+        this.loadConnectors();
+        this.greet();
+    }
+    bind() {
+        this.sendBtn.onclick = () => this.submit();
+        this.input.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            this.submit();
+        } });
+        document.querySelectorAll(".pg-tab").forEach(t => t.addEventListener("click", () => {
+            document.querySelectorAll(".pg-tab").forEach(x => x.classList.remove("active"));
+            t.classList.add("active");
+            this.mode = t.dataset.mode;
+            this.input.placeholder = this.mode === "draw" ? "描述你想画的图片，回车生成…" : "向 imageAI 提问，回车发送…";
+        }));
+    }
+    async loadModels() {
+        try {
+            this.models = await (await fetch("/api/models")).json();
+        }
+        catch {
+            return;
+        }
+        this.modelSel.innerHTML = "";
+        for (const m of this.models) {
+            const card = document.createElement("div");
+            card.className = "model-card" + (m.thinking ? " deep" : "");
+            card.innerHTML = `<span class="mi">${m.icon}</span><b>${esc(m.name)}</b>
+        <small>${esc(m.desc)}</small><em>${m.speed}${m.thinking ? " · 显示思考过程" : " · 快速直答"}</em>`;
+            card.onclick = () => {
+                document.querySelectorAll(".model-card").forEach(c => c.classList.remove("on"));
+                card.classList.add("on");
+                this.bubble("sys", `已切换到 ${m.name}（${m.thinking ? "深度思考，会展示剖析过程" : "快速模式，直接作答"}）`);
+            };
+            this.modelSel.appendChild(card);
+        }
+        const want = window.INIT_MODEL;
+        const cards = Array.from(this.modelSel.children);
+        (cards.find(c => this.models.find(m => m.id === want && c.innerHTML.includes(m.name))) ?? cards[0])?.classList.add("on");
+    }
+    async loadConnectors() {
+        try {
+            this.connectors = await (await fetch("/api/connectors")).json();
+        }
+        catch {
+            return;
+        }
+        this.renderConnectors();
+    }
+    renderConnectors() {
+        this.connSel.innerHTML = "";
+        for (const c of this.connectors) {
+            const chip = document.createElement("button");
+            chip.className = "conn-chip" + (c.enabled ? " on" : "");
+            chip.innerHTML = `${c.icon} ${esc(c.name)}`;
+            chip.title = c.desc;
+            chip.onclick = async () => {
+                const r = await fetch("/api/connector/toggle", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: c.id, enabled: !c.enabled }) });
+                const j = await r.json();
+                this.connectors = j.connectors;
+                this.renderConnectors();
+            };
+            this.connSel.appendChild(chip);
+        }
+    }
+    greet() {
+        this.bubble("bot", "你好，我是 imageAI（由 WikiGroup 开发）。可以选择模型、开启连接器，试试「北京天气」「计算 128*64」或直接聊天、生图～");
+    }
+    bubble(role, html) {
+        const d = document.createElement("div");
+        d.className = "msg " + role;
+        d.innerHTML = html;
+        this.box.appendChild(d);
+        this.box.scrollTop = this.box.scrollHeight;
+        return d;
+    }
+    thinkingBlock(text) {
+        return `<details class="think" open><summary>🧠 深入剖析问题中…</summary><div class="think-body">${esc(text).replace(/\n/g, "<br>")}</div></details>`;
+    }
+    async submit() {
+        const text = this.input.value.trim();
+        if (!text || this.busy)
+            return;
+        this.busy = true;
+        this.sendBtn.disabled = true;
+        this.input.value = "";
+        this.bubble("user", esc(text).replace(/\n/g, "<br>"));
+        const wait = this.bubble("bot", '<span class="dots"><i></i><i></i><i></i></span>');
+        let resp = null;
+        try {
+            const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: this.mode, text }) });
+            resp = await r.json();
+        }
+        catch { /* 网络异常也走优雅提示 */ }
+        if (!resp) {
+            wait.innerHTML = "服务暂时不可用，请稍后再试。";
+            this.busy = false;
+            this.sendBtn.disabled = false;
+            return;
+        }
+        const srcTags = (resp.sources ?? []).map(s => `<span class="src">${s.icon} ${esc(s.name)}·连接器</span>`).join("");
+        const think = resp.thinking ? this.thinkingBlock(resp.thinking) : "";
+        if (resp.image_svg)
+            wait.innerHTML = `${think}<div class="art">${resp.image_svg}</div><p>${esc(resp.reply ?? "")}</p>${srcTags}`;
+        else if (resp.image)
+            wait.innerHTML = `${think}<img class="genimg" src="data:image/png;base64,${resp.image}"><p>${esc(resp.reply ?? "")}</p>${srcTags}`;
+        else
+            wait.innerHTML = `${think}<p>${esc(resp.reply ?? "").replace(/\n/g, "<br>")}</p>${srcTags}`;
+        const tb = wait.querySelector(".think-body");
+        if (tb) {
+            tb.innerHTML = "";
+            this.typeInto(tb, (resp.thinking ?? "").split("\n"));
+        }
+        this.box.scrollTop = this.box.scrollHeight;
+        this.busy = false;
+        this.sendBtn.disabled = false;
+        this.input.focus();
+    }
+    async typeInto(el, lines) {
+        for (const line of lines) {
+            const p = document.createElement("div");
+            el.appendChild(p);
+            for (const ch of line) {
+                p.textContent += ch;
+                await new Promise(r => setTimeout(r, 12));
+            }
+            el.parentElement.parentElement.scrollTop = 9e9;
+        }
+        const sum = el.parentElement.querySelector("summary");
+        if (sum)
+            sum.innerHTML = "🧠 已完成深度剖析（点击展开/收起）";
+    }
+}
+function initReveal() {
+    const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) {
+        e.target.classList.add("show");
+        io.unobserve(e.target);
+    } }), { threshold: .12 });
+    document.querySelectorAll(".card,.model-card,.conn-card").forEach(x => io.observe(x));
+}
+addEventListener("DOMContentLoaded", () => {
+    const cv = document.getElementById("stars");
+    if (cv)
+        new StarField(cv);
+    const tw = document.getElementById("typewriter");
+    if (tw)
+        new Typewriter(tw, "我是 imageAI，一个名字，全部 AI 能力。对话、生图、看图、语音、翻译、连接器，全由 WikiGroup 精心打造。");
+    if (document.getElementById("chat-box"))
+        new ChatApp();
+    initReveal();
+});
+</script>
+</body>
+</html>
