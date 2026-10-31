@@ -89,15 +89,57 @@ textarea,input{font-family:inherit;color:var(--text)}
 
 /* ---- 思考过程面板（imageUI 专属）---- */
 .thinking-panel{border:1px solid var(--think-border);background:var(--think);border-radius:12px;margin-bottom:8px;overflow:hidden;font-size:13px}
+/* ★ 呼吸灯：流式思考期间，边框与背景做微弱律动 + 光晕扩散，感知"AI 正在推理" */
+.thinking-panel.streaming{animation:thinkBreath 2.4s ease-in-out infinite}
+@keyframes thinkBreath{
+ 0%,100%{border-color:var(--think-border);box-shadow:0 0 0 0 rgba(34,197,94,.16)}
+ 50%{border-color:#3f6f4a;box-shadow:0 0 18px 2px rgba(34,197,94,.12)}
+}
+html[data-theme=light] .thinking-panel.streaming{animation:thinkBreathL 2.4s ease-in-out infinite}
+@keyframes thinkBreathL{
+ 0%,100%{border-color:var(--think-border);box-shadow:0 0 0 0 rgba(22,163,74,.10)}
+ 50%{border-color:#9dc79b;box-shadow:0 0 16px 2px rgba(22,163,74,.10)}
+}
+@media(prefers-reduced-motion:reduce){.thinking-panel.streaming{animation:none;border-color:#3f6f4a}}
 .thinking-head{display:flex;align-items:center;gap:8px;padding:9px 13px;cursor:pointer;user-select:none;color:var(--muted)}
 .thinking-head:hover{color:var(--text)}
 .thinking-head .brain{animation:pulse 1.4s infinite}
 .thinking-head.done .brain{animation:none}
+.thinking-head .label{display:inline-flex;align-items:center;gap:2px}
+.thinking-head .dots{display:inline-flex;gap:3px;margin-left:4px}
+.thinking-head .dots span{width:4px;height:4px;border-radius:50%;background:currentColor;display:inline-block;animation:jump 1.2s infinite}
+.thinking-head .dots span:nth-child(2){animation-delay:.15s}.thinking-head .dots span:nth-child(3){animation-delay:.3s}
 .thinking-head .chev{margin-left:auto;transition:transform var(--tr);font-size:11px}
 .thinking-panel.open .chev{transform:rotate(90deg)}
 .thinking-body{display:none;padding:2px 14px 12px 14px;color:var(--muted);line-height:1.7;white-space:pre-wrap;max-height:260px;overflow-y:auto;border-top:1px dashed var(--think-border)}
 .thinking-panel.open .thinking-body{display:block}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ---- 401/403 认证失败红色警告框（含 API Key 设置入口）---- */
+.auth-alert{border:1.5px solid var(--danger);background:rgba(239,68,68,.08);border-radius:12px;padding:14px 16px;margin-top:10px}
+.aa-title{color:var(--danger);font-weight:700;font-size:14px;margin-bottom:6px}
+.aa-desc{font-size:12.5px;color:var(--muted);line-height:1.7;margin-bottom:10px}
+.aa-desc b{color:var(--danger)}
+.aa-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.aa-row input{flex:1;min-width:200px;background:var(--input);border:1px solid var(--danger);border-radius:9px;padding:8px 10px;font-size:13px;outline:none}
+.aa-row input:focus{box-shadow:0 0 0 2px rgba(239,68,68,.25)}
+.aa-btn{border:1px solid var(--border);background:var(--panel);border-radius:9px;padding:8px 14px;font-size:13px;color:var(--text);transition:all var(--tr)}
+.aa-btn:hover{background:var(--hover)}
+.aa-btn.primary{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600}
+.aa-btn.danger{color:var(--danger)}
+/* ---- API Key 设置弹窗（Section 8）---- */
+.key-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
+.key-modal{width:min(460px,100%);background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.km-title{font-size:15px;font-weight:700}
+.km-sub{font-size:11px;color:var(--muted);font-weight:400;margin-left:6px}
+.km-msg{font-size:12.5px;color:var(--muted)}
+.key-modal input{background:var(--input);border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:13.5px;outline:none}
+.key-modal input:focus{border-color:var(--accent)}
+.km-risk{font-size:11.5px;color:var(--danger);background:rgba(239,68,68,.08);border:1px dashed var(--danger);border-radius:9px;padding:8px 10px;line-height:1.6}
+.km-row{display:flex;gap:8px;justify-content:flex-end}
+/* ---- 搜索命中高亮 ---- */
+mark.hit{background:rgba(250,204,21,.35);color:inherit;border-radius:3px;padding:0 1px}
+html[data-theme=dark] mark.hit{background:rgba(250,204,21,.28);color:#fde68a}
 
 /* ---- 打字光标 & 加载 ---- */
 .cursor{display:inline-block;width:7px;height:16px;background:var(--accent);border-radius:2px;vertical-align:-3px;animation:blink .8s infinite}
@@ -154,7 +196,7 @@ textarea,input{font-family:inherit;color:var(--text)}
     <div class="sb-head">
       <button class="btn-new" id="btnNew" title="创建新的空白对话">＋ 新建对话</button>
     </div>
-    <div class="sb-search"><input id="searchInput" type="text" placeholder="🔍 搜索对话…"></div>
+    <div class="sb-search"><input id="searchInput" type="text" placeholder="🔍 模糊搜索标题与内容…（Ctrl+K）"></div>
     <nav class="conv-list" id="convList" aria-label="对话列表"></nav>
     <div class="thinking-hint">💡 切换到 <b>imageUI</b> 终极版模型，回复中将展示可折叠的<b>思考过程</b>面板。</div>
     <div class="sb-foot">
@@ -176,7 +218,7 @@ textarea,input{font-family:inherit;color:var(--text)}
           <option value="imageUI">imageUI · 终极版 🧠</option>
         </select>
       </div>
-      <button class="btn-clear" id="btnClear" title="清空当前对话的消息">🗑 清空</button>
+      <button class="btn-clear" id="btnClear" title="清空当前对话消息；无消息时点击 = 打开 API Key 设置">🗑 清空 · 🔑Key</button>
     </header>
 
     <div class="chat-scroll" id="chatScroll">

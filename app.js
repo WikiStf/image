@@ -15,11 +15,25 @@
 /* ============================ Section 1 · CONFIG ============================ */
 const CONFIG = {
   USE_MOCK: true,                       // ★ 改为 false 并配置 ENDPOINT 即可接入真实大模型
-  ENDPOINT: '/v1/chat/completions',     // ★【替换点】真实 OpenAI 兼容 API 端点，例如 https://api.openai.com/v1/chat/completions
-  API_KEY: '',                          // ★【替换点】真实环境请通过后端代理注入，切勿在前端硬编码 Key
+  /* ★★★【替换点 L23 / L209-217 / L268】生产环境请把 ENDPOINT 指向本地代理（如 http://localhost:3001/v1/chat/completions），
+   * 由 proxy-server.js 携带 Key 转发上游 —— ⚠️⚠️⚠️ 生产环境严禁在前端代码/浏览器中暴露 API Key！ */
+  ENDPOINT: '/v1/chat/completions',     // ★【替换点】OpenAI 兼容端点：推荐走本地代理；直连示例 https://api.deepseek.com/v1/chat/completions
+  get API_KEY() { return localStorage.getItem('imageai-apikey') || ''; },
+                                        // ↑ 密钥不再硬编码！仅从 localStorage 运行时读取（调试用途，见 Section 8）。
+                                        //   ⚠️ 生产环境请勿在前端暴露 Key —— 正式部署务必改用后端代理注入（见任务 2 推荐方案）。
   STORAGE_KEY: 'imageai-chat-v1',
   DEFAULT_MODEL: 'image1.5',
+  TITLE_MODEL: 'image1.5',              // 标题生成使用的轻量模型（真实接入时映射到便宜快速的模型）
+  /* 前端模型 id → 真实 API 的 model 名称映射（DeepSeek/Qwen/vLLM 等按各自文档修改） */
+  MODEL_MAP: {
+    'image1.5':       'gpt-4o-mini',        // ★【替换点】基础版对应的真实模型名
+    'image2.1-turbo': 'gpt-4o',             // ★【替换点】高速版
+    'imageMax':       'gpt-4.1',            // ★【替换点】高性能版
+    'imageUI':        'deepseek-reasoner',  // ★【替换点】终极版：须为"推理模型"（DeepSeek-R1 / QwQ / o系列等），
+                                            //   只有推理模型才会返回 delta.reasoning_content，思考面板才有真实内容
+  },
 };
+const mapModel = (id) => CONFIG.MODEL_MAP[id] || id;   // 未配置映射时原样透传
 
 /* 四个模型，按性能从低到高排列；supportsThinking 决定是否需要渲染思考过程面板 */
 const MODELS = [
@@ -36,7 +50,7 @@ const getModel = (id) => MODELS.find(m => m.id === id) || MODELS[0];
  *                               titlePending, generating, messages:[ {role,content,thinking?,error?} } ] ],
  *           activeId }
  */
-const state = { conversations: [], activeId: null };
+const state = { conversations: [], activeId: null, authAlert: false };
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const now = () => Date.now();
@@ -56,8 +70,8 @@ function createConversation() {
 /** 自动初始化：每次打开主页都创建一个全新的空白会话（需求 §对话管理-自动初始化） */
 function initSession() {
   loadState();
-  // 复位上次遗留的流式状态（防止刷新时中断在"生成中"）
-  state.conversations.forEach(c => { c.generating = false; });
+  // 复位上次遗留的流式状态（防止刷新时中断在"生成中"）；同时清除消息级 _streaming 标记
+  state.conversations.forEach(c => { c.generating = false; c.messages.forEach(m => { if (m._streaming) m._streaming = false; }); });
   const fresh = createConversation();
   state.conversations.unshift(fresh);
   state.activeId = fresh.id;
@@ -187,22 +201,48 @@ function chunkify(text, size) {                              // 中文按字符�
   return out;
 }
 
-/* ---- 3.2 真实 API 框架（预留）----
- * ★★★【替换点】接入真实大模型时：
- *   1. CONFIG.USE_MOCK = false，ENDPOINT 指向你自己的后端代理（由代理注入 API Key）；
- *   2. 后端转发时带上 stream:true；推理模型（DeepSeek-R1 / QwQ 等）的思考内容
- *      位于每个 chunk 的 delta.reasoning_content 字段，本函数已解析并经 onThink 透出，
- *      前端 imageUI 的思考面板无需任何改动即可显示真实思维链。 */
+/* ---- 3.2 真实 API（OpenAI 兼容格式：DeepSeek / 通义Qwen / vLLM / OpenAI 均可用）----
+ * ★★★【生产接入三步走 —— 具体行号】
+ *   ① L17  ：CONFIG.USE_MOCK = false
+ *   ② L20  ：CONFIG.ENDPOINT 改为你的地址（推荐本地代理 http://localhost:3001/v1/chat/completions，
+ *            或私有部署网关；若直连厂商：https://api.deepseek.com/v1/chat/completions）
+ *   ③ L21-23 + L234-243：密钥注入。三选一（按安全性从低到高）：
+ *        a) 浏览器插件（如 Requestly/ModHeader）对请求注入 Authorization 头 → 本函数不发送 Key（删掉 L239 即可）
+ *        b) 用户通过聊天区红色警告框输入 Key → localStorage（仅调试！⚠️ 生产环境请勿在前端暴露 Key）
+ *        c) 【推荐】后端代理注入：前端不带 Key，由 proxy-server.js 统一携带（见仓库根目录 proxy-server.js）
+ *
+ * 标准 fetch 请求示例（与下方 L234-243 实际代码一一对应）：
+ *   fetch('/v1/chat/completions', {
+ *     method : 'POST',
+ *     headers: { 'Content-Type': 'application/json',
+ *               'Authorization': 'Bearer ' + API_KEY },      // ⚠️ 该 Header 只应出现在后端代理里
+ *     body   : JSON.stringify({ model: 'deepseek-reasoner', messages, stream: true }),
+ *     signal ,                                               // AbortController：支持"停止生成"
+ *   });
+ *
+ * ★★ 思维链与正文的分离解析（imageUI 思考面板的关键）：
+ *   SSE 每个 chunk 的 choices[0].delta 可能同时/先后携带两种增量字段：
+ *     · delta.reasoning_content —— 模型的中间推理内容（DeepSeek-R1、QwQ、部分 vLLM/o系列转发时出现）
+ *     · delta.content         —— 最终回复正文
+ *   时序上通常先连续收到若干 reasoning_content，再切换到 content。本函数把二者分别回调：
+ *     onThink(seg) → sendMessage() 中累加 reply.thinking → 渲染进 🧠 Thinking Process 面板
+ *     onDelta(seg) → 累加 reply.content   → 渲染进气泡正文
+ *   只要 imageUI 映射到真实推理模型（见 CONFIG.MODEL_MAP L32），思考面板即自动生效；
+ *   非推理模型不会返回 reasoning_content，面板保持空/隐藏收尾逻辑，互不影响。 */
 async function realStream({ model, messages, onThink, onDelta, signal }) {
+  /* L234-243 ↓↓↓ 标准 Headers + Body（Authorization / messages / stream:true） */
   const resp = await fetch(CONFIG.ENDPOINT, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      /* L239：Key 来自 Section 8 的运行时存储；走后端代理时此处留空即可（代理会替你加上） */
       ...(CONFIG.API_KEY ? { Authorization: 'Bearer ' + CONFIG.API_KEY } : {}),
     },
-    body: JSON.stringify({ model, messages, stream: true }),
+    body: JSON.stringify({ model: mapModel(model), messages, stream: true }),
     signal,
   });
+  /* ★ 任务 3-错误处理：401/403 单独识别 → 触发聊天区红色"API 认证失败"警告框（含 Key 设置入口） */
+  if (resp.status === 401 || resp.status === 403) throw new AuthError(resp.status);
   if (!resp.ok || !resp.body) throw new Error(`API 错误 HTTP ${resp.status}`);
 
   const reader = resp.body.getReader(), dec = new TextDecoder();
@@ -211,20 +251,26 @@ async function realStream({ model, messages, onThink, onDelta, signal }) {
     const { done, value } = await reader.read();
     if (done) break;
     buf += dec.decode(value, { stream: true });
-    const lines = buf.split('\n'); buf = lines.pop();
+    const lines = buf.split('\n'); buf = lines.pop();          // 保留可能被截断的半行
     for (const line of lines) {
       const t = line.trim();
-      if (!t.startsWith('data:')) continue;
+      if (!t.startsWith('data:')) continue;                    // 跳过 event:/注释/心跳帧
       const payload = t.slice(5).trim();
-      if (payload === '[DONE]') return full;
+      if (payload === '[DONE]') return full;                   // OpenAI 流结束标记
       try {
         const d = JSON.parse(payload).choices?.[0]?.delta || {};
-        if (d.reasoning_content) onThink && onThink(d.reasoning_content);   // 思维链增量
-        if (d.content) { full += d.content; onDelta(d.content); }           // 正文增量
-      } catch {/* 忽略心跳/不完整帧 */}
+        /* ★ 分离解析：reasoning_content 与 content 各走各的回调，互不混入 */
+        if (d.reasoning_content) onThink && onThink(d.reasoning_content);   // L263 思维链增量 → 思考面板
+        if (d.content) { full += d.content; onDelta(d.content); }           // L264 正文增量   → 回复气泡
+      } catch {/* 忽略不完整帧 */}
     }
   }
   return full;
+}
+
+/* 401/403 专用错误类型：UI 层据此渲染"设置 API Key"警告框 */
+class AuthError extends Error {
+  constructor(status) { super(status === 403 ? 'API 访问被拒绝（HTTP 403 Forbidden）' : 'API 密钥无效或缺失（HTTP 401 Unauthorized）'); this.name = 'AuthError'; this.status = status; }
 }
 
 /* ============================ Section 4 · TitleGen ============================ */
@@ -242,18 +288,20 @@ async function generateTitle(userMsg, assistantMsg) {
     await sleep(500 + Math.random() * 500);                  // 模拟一次真实的标题小请求
     raw = mockSummarizeTitle(chatML);
   } else {
-    /* ★★★【替换点】真实实现：向 ENDPOINT 发一个非流式小请求即可 */
+    /* ★★★【替换点 L291-307】真实实现：向 ENDPOINT（建议同一本地代理）发一个非流式小请求。
+     * 注意标题请求刻意不带 stream，且用小 max_tokens 控制成本；Key 策略与 realStream 相同。 */
     try {
       const r = await fetch(CONFIG.ENDPOINT, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(CONFIG.API_KEY ? { Authorization: 'Bearer ' + CONFIG.API_KEY } : {}) },
         body: JSON.stringify({
-          model: CONFIG.DEFAULT_MODEL,
+          model: mapModel(CONFIG.TITLE_MODEL),
           messages: [{ role: 'system', content: TITLE_PROMPT },
                      { role: 'user', content: `用户问题：${userMsg}\n助手回答摘要：${assistantMsg.slice(0, 400)}` }],
           stream: false, max_tokens: 32, temperature: 0.3,
         }),
       });
+      if (r.status === 401 || r.status === 403) throw new AuthError(r.status);
       const j = await r.json();
       raw = j.choices?.[0]?.message?.content || null;
     } catch (e) { console.warn('[TitleGen] API 失败，使用规则降级标题:', e); }
@@ -339,18 +387,58 @@ function toast(msg) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => el.toast.classList.remove('show'), 2600);
 }
 
-/* ---- 5.1 侧边栏渲染 ---- */
+/* ---- 5.1 侧边栏渲染（含任务 3 增强：标题+内容的模糊搜索与命中高亮）---- */
+/* 模糊匹配策略（按优先级）：① 连续子串直接命中；② 子序列匹配（关键词字符按序出现即可，容忍中间插字，
+ *   例如 "爬虫" 可命中 "爬虫实现建议"）；③ 多关键词 AND。返回 {score, ranges} 供排序与高亮使用。 */
+function fuzzyMatch(text, kw) {
+  const t = String(text).toLowerCase();
+  let i = t.indexOf(kw);
+  if (i >= 0) return { score: 100 - Math.min(i, 50), ranges: [[i, i + kw.length]] };   // 连续命中：越靠前分越高
+  /* 子序列匹配，贪心取最靠前的位置段 */
+  let ti = 0; const ranges = [];
+  for (const ch of kw) {
+    i = t.indexOf(ch, ti);
+    if (i < 0) return null;
+    const last = ranges[ranges.length - 1];
+    if (last && i === last[1]) last[1] = i + 1; else ranges.push([i, i + 1]);
+    ti = i + 1;
+  }
+  return { score: 20, ranges };
+}
+/* 把命中片段包进 <mark>；先转义 HTML，杜绝注入 */
+function highlightHits(text, ranges) {
+  let out = '', pos = 0;
+  for (const [s, e] of ranges) {
+    out += escapeHtml(text.slice(pos, s)) + '<mark class="hit">' + escapeHtml(text.slice(s, e)) + '</mark>';
+    pos = e;
+  }
+  return out + escapeHtml(text.slice(pos));
+}
+const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 function renderSidebar() {
-  const kw = el.searchInput.value.trim().toLowerCase();
-  const list = [...state.conversations]
-    .filter(c => !kw || c.title.toLowerCase().includes(kw) || c.messages.some(m => m.content.toLowerCase().includes(kw)))
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+  const kws = el.searchInput.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const scored = [];
+  for (const c of state.conversations) {
+    if (!kws.length) { scored.push({ c, score: 0, titleRanges: null }); continue; }
+    let best = null;                                   // 在标题和正文中取最高分的命中
+    for (const kw of kws) {
+      const mt = fuzzyMatch(c.title, kw);
+      if (mt && (!best || mt.score > best.score)) best = { ...mt, fromTitle: true };
+      for (const m of c.messages) {
+        const mm = fuzzyMatch(m.content, kw);
+        if (mm && (!best || mm.score > best.score)) best = { ...mm, fromTitle: false };
+      }
+    }
+    if (best) scored.push({ c, score: best.score, titleRanges: best.fromTitle ? best.ranges : null });
+  }
+  const list = scored.sort((a, b) => b.score - a.score || b.c.updatedAt - a.c.updatedAt).map(x => x);
   el.convList.innerHTML = '';
   if (!list.length) {
-    el.convList.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;padding:24px 8px">${kw ? '没有匹配的对话' : '暂无历史对话'}</div>`;
+    el.convList.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;padding:24px 8px">${kws.length ? '没有匹配的对话' : '暂无历史对话'}</div>`;
     return;
   }
-  for (const c of list) {
+  for (const { c, titleRanges } of list) {
     const item = document.createElement('div');
     item.className = 'conv-item' + (c.id === state.activeId ? ' active' : '');
     item.dataset.id = c.id;
@@ -364,7 +452,9 @@ function renderSidebar() {
         <button class="icon-btn rename" title="重命名">✏️</button>
         <button class="icon-btn danger del" title="删除对话">🗑</button>
       </div>`;
-    item.querySelector('.name').textContent = c.title;
+    const nameEl = item.querySelector('.name');
+    if (titleRanges) nameEl.innerHTML = highlightHits(c.title, titleRanges);   // 搜索命中 → 黄色高亮
+    else nameEl.textContent = c.title;
     item.addEventListener('click', (e) => {
       if (e.target.closest('.rename') || e.target.closest('.del') || item.querySelector('.rename-input')) return;
       switchConversation(c.id);
@@ -406,13 +496,15 @@ function createAssistantNodes(conv, msg) {
   bubble.className = 'bubble';
 
   let thinkBody = null, thinkHead = null, panel = null;
-  /* 思考过程面板：仅当该消息携带 thinking 字段（即产生于 imageUI 模型）时渲染 */
+  /* 思考过程面板：仅当该消息携带 thinking 字段（即产生于 imageUI 模型）时渲染
+   * ★ 任务 3-呼吸灯动画：streaming=true 时面板带 .thinking-panel.streaming 类 →
+   *   边框/背景做微弱呼吸律动 + 🧠 脉冲 + "思考中"三点动画，让用户感知 AI 正在推理 */
   if (typeof msg.thinking === 'string') {
     panel = document.createElement('div');
-    panel.className = 'thinking-panel open';
+    panel.className = 'thinking-panel open streaming';
     panel.innerHTML = `
       <div class="thinking-head">
-        <span class="brain">🧠</span><span class="label">正在深度思考…</span><span class="chev">▶</span>
+        <span class="brain">🧠</span><span class="label">正在深度思考<span class="dots"><span></span><span></span><span></span></span></span><span class="chev">▶</span>
       </div>
       <div class="thinking-body"></div>`;
     thinkBody = panel.querySelector('.thinking-body');
@@ -477,8 +569,12 @@ function renderMessages() {
       bubble.className = 'bubble';
       if (typeof m.thinking === 'string') {                 // imageUI 的历史回复 → 折叠的思考面板
         const panel = document.createElement('div');
-        panel.className = 'thinking-panel';
-        panel.innerHTML = `<div class="thinking-head done"><span class="brain">🧠</span><span class="label">已完成思考 · 点击查看推理过程</span><span class="chev">▶</span></div><div class="thinking-body"></div>`;
+        /* ★ 呼吸灯状态还原：_streaming 精确标记"进行中的那条消息"（initSession 会清除遗留标记） */
+        const live = m._streaming === true;
+        panel.className = 'thinking-panel' + (live ? ' open streaming' : '');
+        const doneHead = `<div class="thinking-head done"><span class="brain">🧠</span><span class="label">已完成思考 · 点击查看推理过程</span><span class="chev">▶</span></div>`;
+        const liveHead = `<div class="thinking-head"><span class="brain">🧠</span><span class="label">正在深度思考<span class="dots"><span></span><span></span><span></span></span></span><span class="chev">▶</span></div>`;
+        panel.innerHTML = live ? liveHead : doneHead;
         panel.querySelector('.thinking-body').textContent = m.thinking || '（无思考内容）';
         panel.querySelector('.thinking-head').addEventListener('click', () => panel.classList.toggle('open'));
         bubble.appendChild(panel);
@@ -523,10 +619,39 @@ function renderHeader() {
   el.curModelLabel.textContent = `${m.name} · ${m.tier}`;
   el.modelSelect.value = m.id;
 }
-function renderAll() { renderSidebar(); renderHeader(); renderMessages(); }
+
+/* ★ 任务 3-错误处理优化：401/403 → 聊天区醒目红色警告框 + API Key 设置入口（localStorage 临时存储，仅调试用） */
+function renderAuthAlert() {
+  if (!state.authAlert) return;                            // 非认证错误不渲染
+  const old = $('authAlertBox'); if (old) old.remove();
+  const box = document.createElement('div');
+  box.id = 'authAlertBox'; box.className = 'auth-alert fade-in';
+  box.innerHTML = `
+    <div class="aa-title">🚫 API 认证失败（HTTP 401 / 403）</div>
+    <div class="aa-desc">密钥缺失、无效或无访问权限。你可以在此临时输入 API Key（保存于浏览器 localStorage，仅供本地调试）。<br>
+      <b>⚠️ 风险提示：</b>浏览器存储可被脚本/XSS 读取，<u>生产环境请勿在前端暴露 Key</u> —— 请改用后端代理注入（见 proxy-server.js）。</div>
+    <div class="aa-row">
+      <input id="apiKeyInput" type="password" placeholder="sk-...（留空并保存 = 清除已存 Key）" autocomplete="off" spellcheck="false">
+      <button class="aa-btn primary" id="btnSaveKey">保存</button>
+      <button class="aa-btn" id="btnCloseAlert">关闭</button>
+    </div>`;
+  el.messages.appendChild(box);
+  const inp = box.querySelector('#apiKeyInput');
+  inp.value = localStorage.getItem('imageai-apikey') || '';
+  box.querySelector('#btnSaveKey').addEventListener('click', () => {
+    const v = inp.value.trim();
+    if (v) { localStorage.setItem('imageai-apikey', v); toast('🔑 Key 已保存到本地（下次请求生效）'); }
+    else { localStorage.removeItem('imageai-apikey'); toast('已清除本地 Key'); }
+    state.authAlert = false; box.remove();
+  });
+  box.querySelector('#btnCloseAlert').addEventListener('click', () => { state.authAlert = false; box.remove(); });
+  scrollBottom(false);
+}
+function renderAll() { renderSidebar(); renderHeader(); renderMessages(); renderAuthAlert(); }
 
 /* ============================ Section 6 · Actions ============================ */
-let abortCtl = null;   // 当前流式请求的中止控制器
+let abortCtl = null;       // 当前流式请求的中止控制器
+let searchDebounce = null; // 侧边栏搜索防抖定时器
 
 /** 切换会话：若旧会话的流式回复仍在进行，先静默中止并落盘已完成部分 */
 function switchConversation(id) {
@@ -586,15 +711,22 @@ async function sendMessage() {
     if (e.name === 'AbortError') {
       reply.content += reply.content ? '\n（已停止生成）' : '（已停止生成）';
       nodes.content.textContent = reply.content;
+    } else if (e.name === 'AuthError') {
+      /* ★ 401/403：标记认证失败 → renderAll() 时在聊天区弹出红色警告框 + Key 设置入口 */
+      reply.error = e.message;
+      state.authAlert = true;
+      if (!reply.content) nodes.content.textContent = '—';
+      toast('🚫 ' + e.message);
     } else {
       reply.error = navigator.onLine ? (e.message || '请求失败') : '网络不可用，无法连接模型服务';
       if (!reply.content) nodes.content.textContent = '—';
       toast('❌ ' + reply.error);
     }
   } finally {
-    reply._streaming = false;
+    reply._streaming = false;                               // 流式结束：清除进行中标记（呼吸灯状态依据）
     reply.ts = now();
-    if (nodes.thinkHead) {                                  // 思考面板收尾：标记完成并自动折叠
+    if (nodes.thinkHead) {                                  // 思考面板收尾：停止呼吸灯、标记完成并自动折叠
+      nodes.panel.classList.remove('streaming');
       nodes.thinkHead.classList.add('done');
       nodes.thinkHead.querySelector('.label').textContent = '已完成思考 · 点击查看推理过程';
       nodes.panel.classList.remove('open');
@@ -645,7 +777,42 @@ function setBusy(busy) {
   el.btnSend.title = busy ? '停止生成' : '发送';
 }
 
-/* ============================ Section 7 · Boot ============================ */
+/* ============================ Section 8 · KeyUI ============================ */
+/* ★ 任务 2-简易方案的 UI 入口：随时打开"API Key 设置"弹窗（与 401 警告框共用 localStorage 存储）。
+ * ⚠️⚠️⚠️ 生产环境请勿在前端暴露 Key —— 此入口仅为本地调试便利；正式部署请使用 proxy-server.js 后端注入。 */
+function openKeyDialog(prefillMsg) {
+  const old = $('keyModal'); if (old) old.remove();
+  const mask = document.createElement('div');
+  mask.id = 'keyModal'; mask.className = 'key-mask';
+  mask.innerHTML = `
+    <div class="key-modal fade-in">
+      <div class="km-title">🔑 API Key 设置<span class="km-sub">（仅存本机浏览器，供调试使用）</span></div>
+      ${prefillMsg ? `<div class="km-msg">${prefillMsg}</div>` : ''}
+      <input id="kmInput" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false">
+      <div class="km-risk">⚠️ 风险提示：localStorage 中的明文 Key 可被任何脚本读取；生产环境请勿在前端暴露 Key，务必改用后端代理（proxy-server.js）。</div>
+      <div class="km-row">
+        <button class="aa-btn primary" id="kmSave">保存</button>
+        <button class="aa-btn danger" id="kmClear">清除</button>
+        <button class="aa-btn" id="kmClose">关闭</button>
+      </div>
+    </div>`;
+  document.body.appendChild(mask);
+  const inp = mask.querySelector('#kmInput');
+  inp.value = localStorage.getItem('imageai-apikey') || '';
+  inp.focus();
+  mask.addEventListener('click', (e) => { if (e.target === mask) mask.remove(); });
+  mask.querySelector('#kmClose').addEventListener('click', () => mask.remove());
+  mask.querySelector('#kmSave').addEventListener('click', () => {
+    const v = inp.value.trim();
+    if (v) localStorage.setItem('imageai-apikey', v); else localStorage.removeItem('imageai-apikey');
+    toast(v ? '🔑 Key 已保存到本地' : '已清除本地 Key'); mask.remove();
+  });
+  mask.querySelector('#kmClear').addEventListener('click', () => {
+    localStorage.removeItem('imageai-apikey'); toast('已清除本地 Key'); mask.remove();
+  });
+}
+
+/* ============================ Section 7 · Boot（启动入口） ============================ */
 function autoGrow() {
   el.input.style.height = 'auto';
   el.input.style.height = Math.min(el.input.scrollHeight, 160) + 'px';
@@ -669,14 +836,19 @@ function bindEvents() {
   });
 
   el.btnClear.addEventListener('click', () => {
-    const conv = activeConv(); if (!conv || !conv.messages.length) return;
+    const conv = activeConv(); if (!conv) return;
+    /* ★ 无消息时：清空按钮退化为"API Key 设置"入口（简易方案调试用，见 Section 8） */
+    if (!conv.messages.length) { openKeyDialog('💡 随时可在此更新/清除本地调试 Key。真实 API 模式建议配置后端代理注入。'); return; }
     if (confirm('清空当前对话的全部消息？（标题保留）')) {
       conv.messages = []; conv.titlePending = false; conv.aiTitled = false; conv.title = '新对话';
       saveState(); renderAll();
     }
   });
 
-  el.searchInput.addEventListener('input', renderSidebar);
+  el.searchInput.addEventListener('input', () => {
+    clearTimeout(searchDebounce);                    // 内容级模糊搜索开销较大 → 150ms 防抖
+    searchDebounce = setTimeout(renderSidebar, 150);
+  });
 
   el.btnTheme.addEventListener('click', () => {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
@@ -704,6 +876,14 @@ function bindEvents() {
   addEventListener('online', () => { netStatus(); toast('✅ 网络已恢复'); });
   addEventListener('offline', () => { netStatus(); toast('⚠️ 网络已断开'); });
   netStatus();
+
+  /* ★ 快捷键：Ctrl/Cmd+K 聚焦搜索框（配合模糊搜索）；真实 API 模式下无 Key 时给出一次引导提示 */
+  addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); el.searchInput.focus(); el.searchInput.select(); }
+  });
+  if (!CONFIG.USE_MOCK && !localStorage.getItem('imageai-apikey')) {
+    setTimeout(() => toast('🔑 真实 API 模式尚未设置 Key，可在报错后的红色警告框或 🗑 按钮处设置'), 800);
+  }
 }
 
 (function boot() {
