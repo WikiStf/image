@@ -113,6 +113,9 @@ html[data-theme=light] .thinking-panel.streaming{animation:thinkBreathL 2.4s eas
 .thinking-panel.open .chev{transform:rotate(90deg)}
 .thinking-body{display:none;padding:2px 14px 12px 14px;color:var(--muted);line-height:1.7;white-space:pre-wrap;max-height:260px;overflow-y:auto;border-top:1px dashed var(--think-border)}
 .thinking-panel.open .thinking-body{display:block}
+/* ★ Reasoning Core：流式思考时在面板正文末尾追加"光标"（由 app.js 控制 ::after 显隐），
+ *   呼吸灯 + 打字光标双重暗示"AI 正在推理"；prefers-reduced-motion 下自动关闭动画 */
+.thinking-panel.streaming .thinking-body::after{content:'▍';color:#22c55e;animation:blink 1s step-end infinite;margin-left:2px}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
 
 /* ---- 401/403 认证失败红色警告框（含 API Key 设置入口）---- */

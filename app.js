@@ -202,16 +202,17 @@ function chunkify(text, size) {                              // 中文按字符�
 }
 
 /* ---- 3.2 真实 API（OpenAI 兼容格式：DeepSeek / 通义Qwen / vLLM / OpenAI 均可用）----
- * ★★★【生产接入三步走 —— 具体行号】
- *   ① L17  ：CONFIG.USE_MOCK = false
- *   ② L20  ：CONFIG.ENDPOINT 改为你的地址（推荐本地代理 http://localhost:3001/v1/chat/completions，
- *            或私有部署网关；若直连厂商：https://api.deepseek.com/v1/chat/completions）
- *   ③ L21-23 + L234-243：密钥注入。三选一（按安全性从低到高）：
- *        a) 浏览器插件（如 Requestly/ModHeader）对请求注入 Authorization 头 → 本函数不发送 Key（删掉 L239 即可）
+ * ★★★【生产接入三步走 —— 具体行号，与下方实际代码一一对应】
+ *   ① L17    ：CONFIG.USE_MOCK = false
+ *   ② L20    ：CONFIG.ENDPOINT 改为你的地址（推荐本地代理 http://localhost:3001/v1/chat/completions，
+ *              或私有部署网关；若直连厂商：https://api.deepseek.com/v1/chat/completions）
+ *   ③ L21-23 ：API_KEY getter（localStorage 运行时读取）＋ L240：Authorization 头拼装。
+ *              密钥注入三选一（按安全性从低到高）：
+ *        a) 浏览器插件（如 Requestly/ModHeader）对请求注入 Authorization 头 → 本函数不发送 Key（删掉 L240 即可）
  *        b) 用户通过聊天区红色警告框输入 Key → localStorage（仅调试！⚠️ 生产环境请勿在前端暴露 Key）
  *        c) 【推荐】后端代理注入：前端不带 Key，由 proxy-server.js 统一携带（见仓库根目录 proxy-server.js）
  *
- * 标准 fetch 请求示例（与下方 L234-243 实际代码一一对应）：
+ * 标准 fetch 请求示例（即 realStream 函数体本身，L234-244）：
  *   fetch('/v1/chat/completions', {
  *     method : 'POST',
  *     headers: { 'Content-Type': 'application/json',
@@ -220,22 +221,24 @@ function chunkify(text, size) {                              // 中文按字符�
  *     signal ,                                               // AbortController：支持"停止生成"
  *   });
  *
- * ★★ 思维链与正文的分离解析（imageUI 思考面板的关键）：
+ * ★★ 思维链与正文的分离解析（imageUI 思考面板的关键，见 L286-290）：
  *   SSE 每个 chunk 的 choices[0].delta 可能同时/先后携带两种增量字段：
  *     · delta.reasoning_content —— 模型的中间推理内容（DeepSeek-R1、QwQ、部分 vLLM/o系列转发时出现）
  *     · delta.content         —— 最终回复正文
  *   时序上通常先连续收到若干 reasoning_content，再切换到 content。本函数把二者分别回调：
  *     onThink(seg) → sendMessage() 中累加 reply.thinking → 渲染进 🧠 Thinking Process 面板
+ *                    （realStream 内部已做 rAF 合帧批量，避免高频 delta 打爆渲染层）
  *     onDelta(seg) → 累加 reply.content   → 渲染进气泡正文
  *   只要 imageUI 映射到真实推理模型（见 CONFIG.MODEL_MAP L32），思考面板即自动生效；
  *   非推理模型不会返回 reasoning_content，面板保持空/隐藏收尾逻辑，互不影响。 */
 async function realStream({ model, messages, onThink, onDelta, signal }) {
-  /* L234-243 ↓↓↓ 标准 Headers + Body（Authorization / messages / stream:true） */
+  /* ↓↓↓ 标准 Headers + Body（Authorization / messages / stream:true） */
   const resp = await fetch(CONFIG.ENDPOINT, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      /* L239：Key 来自 Section 8 的运行时存储；走后端代理时此处留空即可（代理会替你加上） */
+      /* Key 来自 Section 8 的运行时存储；走后端代理时此处留空即可（代理会替你加上）
+       * ⚠️⚠️⚠️ 生产环境请勿在前端暴露 Key —— 正式部署务必改用 proxy-server.js 注入！ */
       ...(CONFIG.API_KEY ? { Authorization: 'Bearer ' + CONFIG.API_KEY } : {}),
     },
     body: JSON.stringify({ model: mapModel(model), messages, stream: true }),
@@ -243,29 +246,58 @@ async function realStream({ model, messages, onThink, onDelta, signal }) {
   });
   /* ★ 任务 3-错误处理：401/403 单独识别 → 触发聊天区红色"API 认证失败"警告框（含 Key 设置入口） */
   if (resp.status === 401 || resp.status === 403) throw new AuthError(resp.status);
-  if (!resp.ok || !resp.body) throw new Error(`API 错误 HTTP ${resp.status}`);
+  if (!resp.ok || !resp.body) {
+    /* 尽力提取上游错误信息（部分网关返回 JSON body），便于用户排障 */
+    let detail = '';
+    try { const j = await resp.json(); detail = j?.error?.message ? `：${j.error.message}` : ''; } catch {}
+    throw new Error(`API 错误 HTTP ${resp.status}${detail}`);
+  }
 
   const reader = resp.body.getReader(), dec = new TextDecoder();
   let buf = '', full = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const lines = buf.split('\n'); buf = lines.pop();          // 保留可能被截断的半行
-    for (const line of lines) {
-      const t = line.trim();
-      if (!t.startsWith('data:')) continue;                    // 跳过 event:/注释/心跳帧
-      const payload = t.slice(5).trim();
-      if (payload === '[DONE]') return full;                   // OpenAI 流结束标记
-      try {
-        const d = JSON.parse(payload).choices?.[0]?.delta || {};
-        /* ★ 分离解析：reasoning_content 与 content 各走各的回调，互不混入 */
-        if (d.reasoning_content) onThink && onThink(d.reasoning_content);   // L263 思维链增量 → 思考面板
-        if (d.content) { full += d.content; onDelta(d.content); }           // L264 正文增量   → 回复气泡
-      } catch {/* 忽略不完整帧 */}
+  /* rAF 合帧缓冲（Reasoning Core · 流式渲染性能优化）：
+   * 真实 API 在高吞吐时每秒可推送数十个 delta；若每个增量都直接写 DOM，会频繁触发
+   * layout/paint。这里把增量先累积进内存字符串，用 requestAnimationFrame 节流——
+   * 每帧最多刷新一次文本节点（≈60fps 上限），且仅在内容确有增长时写回，
+   * 思维链面板与正文气泡共用同一策略，长回答/快速模型下明显更顺滑。 */
+  let thinkBuf = '', paintRaf = 0;
+  const schedulePaint = () => {
+    if (paintRaf) return;
+    paintRaf = requestAnimationFrame(() => {
+      paintRaf = 0;
+      if (thinkBuf) { onThink && onThink(thinkBuf); thinkBuf = ''; }   // 思维链批量落屏
+    });
+  };
+  const flushPaint = () => {                                          // 流结束时兜底，确保最后一段不丢失
+    if (paintRaf) { cancelAnimationFrame(paintRaf); paintRaf = 0; }
+    if (thinkBuf) { onThink && onThink(thinkBuf); thinkBuf = ''; }
+  };
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n'); buf = lines.pop();                // 保留可能被截断的半行
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:')) continue;                          // 跳过 event:/注释/心跳帧
+        const payload = t.slice(5).trim();
+        if (payload === '[DONE]') { flushPaint(); return full; }       // OpenAI 流结束标记
+        try {
+          const choice = JSON.parse(payload).choices?.[0];
+          const d = choice?.delta || choice?.message || {};            // 兼容个别网关只在末帧给 message 全量
+          /* ★ 分离解析：reasoning_content 与 content 各走各的通道，互不混入 */
+          if (d.reasoning_content) { thinkBuf += d.reasoning_content; schedulePaint(); }  // 思维链 → 🧠 面板（rAF 合帧）
+          if (d.content) { full += d.content; onDelta(d.content); }                       // 正文增量 → 回复气泡
+        } catch {/* 忽略不完整帧 */}
+      }
     }
+    flushPaint();
+    return full;
+  } finally {
+    if (paintRaf) cancelAnimationFrame(paintRaf);                      // Abort/异常时清理待执行的绘制帧
   }
-  return full;
 }
 
 /* 401/403 专用错误类型：UI 层据此渲染"设置 API Key"警告框 */
@@ -696,9 +728,16 @@ async function sendMessage() {
       model: conv.model,
       messages: history,
       signal: abortCtl.signal,
-      onThink: (seg) => {                                   // 仅 imageUI 走到这里（思维链流式）
+      onThink: (seg) => {                                   // 仅 imageUI 走到这里（思维链流式；realStream 已按 rAF 合帧批量回调）
         reply.thinking += seg;
-        if (nodes.thinkBody) { nodes.thinkBody.textContent = reply.thinking; scrollBottom(); }
+        if (nodes.thinkBody) {
+          nodes.thinkBody.textContent = reply.thinking;
+          /* 智能自动跟随：用户手动向上滚动阅读早期思考时，不打断其位置（距底部 >60px 即视为"离开阅读位"） */
+          const tb = nodes.thinkBody;
+          const stick = tb.scrollHeight - tb.scrollTop - tb.clientHeight < 60;
+          if (stick) tb.scrollTop = tb.scrollHeight;
+          scrollBottom();
+        }
       },
       onDelta: (seg) => {
         if (!reply.content) nodes.content.innerHTML = '';   // 首 token 到达，移除加载动画

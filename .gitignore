@@ -1,2 +1,6 @@
 # Logs and temp files
 *.log
+__pycache__/
+node_modules/
+.env
+.vscode/settings.json
