@@ -1,0 +1,8 @@
+{
+  "editor.formatOnSave": true,
+  "editor.tabSize": 2,
+  "files.exclude": { "**/__pycache__": true, "**/node_modules": true },
+  // 本地调试时给静态服务/代理加白名单，避免浏览器安全告警干扰
+  "security.workspace.trust.untrustedFiles": "newWindow",
+  "emmet.includeLanguages": { "html": "html" }
+}

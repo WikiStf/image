@@ -6,3 +6,9 @@ WARNING: This is a development server. Do not use it in a production deployment.
  * Running on http://21.0.2.189:8000
 Press CTRL+C to quit
 127.0.0.1 - - [02/Oct/2026 10:05:01] "GET / HTTP/1.1" 200 -
+2026-11-01T09:59:17.838Z [INFO] proxy v2.0.0 初始化 · 上游=https://api.openai.com · 端口=3999
+2026-11-01T09:59:17.843Z [INFO] ✅ LLM 代理已启动 → http://localhost:3999/v1/chat/completions · 心跳: GET /health
+2026-11-01T09:59:17.843Z [INFO] 上游地址: https://api.openai.com/v1/chat/completions
+2026-11-01T09:59:17.843Z [INFO] ⚠️ 生产环境请勿在前端暴露 Key：Key 仅保存在本进程环境变量中。
+2026-11-01T09:59:19.350Z [WARN] 404 GET /nope from ::ffff:127.0.0.1
+2026-11-01T09:59:22.519Z [INFO] 收到 SIGTERM，正在优雅退出…

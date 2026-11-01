@@ -1,0 +1,38 @@
+{
+  // lemon 的 imageAI Chat 调试配置 —— F5 一键同时启动「LLM 代理 + Chrome 前端」
+  // ⚠️ API Key 只通过终端环境变量注入（见 tasks.json / proxy-server.js），严禁写入本文件！
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "全栈调试（代理 + Chrome）",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:8000/index.html",
+      "webRoot": "${workspaceFolder}",
+      "sourceMaps": true,
+      "preLaunchTask": "start: proxy + static server"
+    },
+    {
+      "name": "仅前端（Mock 模式，无需后端）",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:8000/index.html",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "start: static server only"
+    },
+    {
+      "name": "附加到 Node 代理（断点 realStream 转发逻辑）",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "代理(node --inspect) + Chrome",
+      "configurations": ["附加到 Node 代理（断点 realStream 转发逻辑）", "仅前端（Mock 模式，无需后端）"],
+      "preLaunchTask": "start: proxy with inspect"
+    }
+  ]
+}

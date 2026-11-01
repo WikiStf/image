@@ -1,0 +1,36 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "start: static server only",
+      "type": "shell",
+      "command": "python -m http.server 8000",
+      "isBackground": true,
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": { "pattern": { "regexp": "^$" }, "background": { "activeOnStart": true, "beginsPattern": ".", "endsPattern": "Serving HTTP" } }
+    },
+    {
+      "label": "start: llm proxy",
+      "type": "shell",
+      // Windows PowerShell：先设好环境变量再启动。Key 永远不进代码库。
+      "command": "$env:OPENAI_API_KEY='sk-在此填入或从系统环境读取'; $env:UPSTREAM='https://api.deepseek.com'; node proxy-server.js",
+      "isBackground": true,
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": { "pattern": { "regexp": "^$" }, "background": { "activeOnStart": true, "beginsPattern": ".", "endsPattern": "LLM 代理已启动" } }
+    },
+    {
+      "label": "start: proxy with inspect",
+      "type": "shell",
+      "command": "node --inspect proxy-server.js",
+      "isBackground": true,
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": { "pattern": { "regexp": "^$" }, "background": { "activeOnStart": true, "beginsPattern": ".", "endsPattern": "LLM 代理已启动" } }
+    },
+    {
+      "label": "start: proxy + static server",
+      "dependsOrder": "sequence",
+      "dependsOn": ["start: static server only", "start: llm proxy"],
+      "problemMatcher": []
+    }
+  ]
+}

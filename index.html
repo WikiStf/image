@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="zh" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>image · WikiGroup 发明的 AI</title>
+<style>
+/* ==================== 主题变量 ==================== */
+:root{--sbw:280px;--radius:14px;--tr:.25s ease}
+html[data-theme=dark]{--bg:#0b0e14;--panel:#11151d;--sb:#0e1219;--card:#1a202c;--border:#232b38;
+ --text:#e6ebf2;--muted:#8b98ab;--accent:#4f8cff;--accent2:#8b5cf6;--hover:#171d28;--input:#151a23;
+ --think:#151b16;--think-border:#2b3a2e;--danger:#ef4444;--scroll:#2a3444}
+html[data-theme=light]{--bg:#f7f8fa;--panel:#fff;--sb:#eef1f5;--card:#f1f3f7;--border:#dde3ea;
+ --text:#1b2330;--muted:#68758a;--accent:#2563eb;--accent2:#7c3aed;--hover:#e6ebf1;--input:#fff;
+ --think:#f0f6ee;--think-border:#cfe0cb;--danger:#dc2626;--scroll:#c6cedb}
+
+/* ==================== 基础 ==================== */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--text);transition:background var(--tr),color var(--tr);overflow:hidden}
+::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:8px}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+textarea,input,select{font-family:inherit;color:var(--text)}
+.hidden{display:none!important}
+
+/* ---- image 品牌 Logo（文字标：渐变描边圆角框 + 渐变字，无图片依赖）---- */
+.img-logo{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;flex-shrink:0;
+ border:1.5px solid transparent;background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(135deg,var(--accent),var(--accent2)) border-box}
+.img-logo svg{width:16px;height:16px;display:block}
+
+/* ==================== 整体布局 ==================== */
+.app{display:flex;height:100vh;width:100%}
+.sidebar{width:var(--sbw);min-width:var(--sbw);background:var(--sb);border-right:1px solid var(--border);display:flex;flex-direction:column;transition:margin-left var(--tr);z-index:30}
+.sidebar.collapsed{margin-left:calc(var(--sbw)*-1)}
+.main{flex:1;display:flex;flex-direction:column;min-width:0;position:relative}
+
+/* ==================== 侧边栏 ==================== */
+.sb-head{padding:14px;display:flex;gap:10px;align-items:center}
+.logo{font-weight:800;font-size:17px;display:flex;align-items:center;gap:8px;flex:1;white-space:nowrap}
+.logo .spark{background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.btn-new{display:flex;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-radius:10px;padding:9px 14px;font-size:13px;font-weight:600;transition:opacity var(--tr),transform var(--tr)}
+.btn-new:hover{opacity:.88}.btn-new:active{transform:scale(.96)}
+.sb-search{padding:0 14px 10px}
+.sb-search input{width:100%;background:var(--input);border:1px solid var(--border);border-radius:10px;padding:8px 12px;font-size:13px;outline:none}
+.sb-search input:focus{border-color:var(--accent)}
+.conv-list{flex:1;overflow-y:auto;padding:4px 8px 12px}
+.conv-item{display:flex;align-items:center;gap:8px;padding:10px 10px;border-radius:10px;cursor:pointer;margin-bottom:2px;transition:background var(--tr),transform var(--tr),box-shadow var(--tr);border:1px solid transparent}
+/* ★ 任务 3-微交互：悬停高亮 + 轻微上浮过渡动画 */
+.conv-item:hover{background:var(--hover);transform:translateX(3px)}
+.conv-item.active{background:var(--card);border-color:var(--border);box-shadow:inset 3px 0 0 var(--accent)}
+.conv-item .t{flex:1;min-width:0}
+.conv-item .name{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conv-item .sub{font-size:11px;color:var(--muted);margin-top:2px;display:flex;gap:6px;align-items:center}
+.model-dot{font-size:10px;padding:1px 6px;border-radius:6px;background:var(--hover);color:var(--muted);border:1px solid var(--border)}
+.conv-actions{display:flex;gap:2px;opacity:0;transition:opacity var(--tr)}
+.conv-item:hover .conv-actions,.conv-item.active .conv-actions{opacity:1}
+.icon-btn{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;color:var(--muted)}
+.icon-btn:hover{background:var(--hover);color:var(--text)}
+.icon-btn.danger:hover{color:var(--danger)}
+.rename-input{flex:1;background:var(--input);border:1px solid var(--accent);border-radius:6px;padding:4px 6px;font-size:13px;outline:none;min-width:0}
+.sb-foot{padding:12px 14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.theme-toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding:7px 10px;border-radius:9px;border:1px solid var(--border);width:100%;justify-content:center}
+.theme-toggle:hover{background:var(--hover);color:var(--text)}
+.thinking-hint{margin:0 14px 10px;padding:8px 10px;border:1px dashed var(--accent2);border-radius:9px;font-size:11.5px;color:var(--muted);line-height:1.5}
+.thinking-hint b{color:var(--accent2)}
+
+/* ==================== 顶栏 ==================== */
+.topbar{height:56px;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid var(--border);background:var(--panel);backdrop-filter:blur(8px)}
+.btn-menu{font-size:18px;color:var(--muted);width:34px;height:34px;border-radius:8px}
+.btn-menu:hover{background:var(--hover);color:var(--text)}
+.chat-title{flex:1;min-width:0;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-title .ai-badge{font-size:10px;font-weight:500;color:var(--accent2);border:1px solid var(--accent2);border-radius:6px;padding:1px 5px;margin-left:8px;vertical-align:1px}
+/* ---- 模式切换（对话 / 图片 / 视频）分段控件 ---- */
+.mode-tabs{display:flex;gap:2px;background:var(--input);border:1px solid var(--border);border-radius:10px;padding:3px}
+.mode-tab{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);padding:5px 11px;border-radius:8px;transition:background var(--tr),color var(--tr);white-space:nowrap}
+.mode-tab:hover{color:var(--text)}
+.mode-tab.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:600}
+/* ---- API Key 徽章按钮 ---- */
+.btn-key{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:9px;padding:6px 11px;transition:border-color var(--tr),color var(--tr);white-space:nowrap}
+.btn-key:hover{border-color:var(--accent);color:var(--text)}
+.btn-key .key-dot{width:8px;height:8px;border-radius:50%;background:var(--danger);box-shadow:0 0 6px var(--danger)}
+.btn-key.has-key .key-dot{background:#22c55e;box-shadow:0 0 6px #22c55e}
+.model-select-wrap{position:relative}
+#modelSelect{appearance:none;background:var(--input);border:1px solid var(--border);border-radius:10px;padding:8px 34px 8px 12px;font-size:13px;cursor:pointer;outline:none;transition:border-color var(--tr)}
+#modelSelect:focus{border-color:var(--accent)}
+.model-select-wrap::after{content:"▾";position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--muted);font-size:12px}
+.btn-clear{font-size:13px;color:var(--muted);padding:7px 12px;border-radius:9px;border:1px solid var(--border)}
+.btn-clear:hover{color:var(--danger);border-color:var(--danger)}
+
+/* ==================== 消息区 ==================== */
+.chat-scroll{flex:1;overflow-y:auto;scroll-behavior:smooth}  /* ★ 任务 3-平滑滚动：容器原生 smooth + app.js scrollTop 赋值 = 自动滚动带缓动 */
+.chat-inner{max-width:820px;margin:0 auto;padding:24px 20px 12px;display:flex;flex-direction:column;gap:22px}
+.msg-row{display:flex;gap:12px;align-items:flex-start}
+.msg-row.user{flex-direction:row-reverse}
+.avatar{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;user-select:none}
+.msg-row.assistant .avatar{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+.msg-row.user .avatar{background:var(--card);border:1px solid var(--border)}
+.bubble{max-width:calc(100% - 60px);min-width:0}
+.msg-row.user .bubble{background:linear-gradient(135deg,var(--accent),#3b6fd4);color:#fff;border-radius:14px 14px 3px 14px;padding:10px 14px}
+.msg-row.assistant .bubble{width:100%}
+.content{background:var(--card);border:1px solid var(--border);border-radius:3px 14px 14px 14px;padding:13px 16px;font-size:14.5px;line-height:1.8;letter-spacing:.012em;word-break:break-word}
+.meta{font-size:11px;color:var(--muted);margin-top:5px;display:flex;gap:10px;align-items:center}
+
+/* ==================== Markdown 排版（★ 任务 2/3：标题、引用、列表、表格、代码块）==================== */
+.md-body>:first-child{margin-top:0}.md-body>:last-child{margin-bottom:0}
+.content h1,.content h2,.content h3,.content h4{margin:16px 0 8px;line-height:1.4;font-weight:700}
+.content h1{font-size:19px;border-bottom:1px solid var(--border);padding-bottom:6px}
+.content h2{font-size:17px}.content h3{font-size:15.5px}.content h4{font-size:14.5px}
+.content p{margin:8px 0}
+.content ul,.content ol{margin:8px 0;padding-left:22px}
+.content li{margin:3px 0}
+.content blockquote{border-left:3px solid var(--accent);background:rgba(79,140,255,.07);margin:10px 0;padding:8px 12px;border-radius:0 8px 8px 0;color:var(--muted)}
+.content blockquote p{margin:2px 0}
+.content table{border-collapse:collapse;width:100%;font-size:13.5px;margin:4px 0}
+.content th,.content td{border:1px solid var(--border);padding:7px 10px;text-align:left}
+.content th{background:var(--panel);font-weight:600}
+.content tr:nth-child(even) td{background:rgba(128,128,160,.05)}
+.content a{color:var(--accent);text-decoration:none;border-bottom:1px dashed transparent;transition:border-color var(--tr)}
+.content a:hover{border-bottom-color:var(--accent)}
+.content hr{border:none;border-top:1px solid var(--border);margin:14px 0}
+.content del{opacity:.6}
+.content img{max-width:100%;border-radius:10px}
+.content code:not(pre code){background:var(--hover);border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:.9em;font-family:ui-monospace,Consolas,"Courier New",monospace;color:var(--accent2)}
+/* GFM 任务列表 - [ ] / - [x] */
+.content li input[type=checkbox]{accent-color:var(--accent);margin-right:6px;transform:translateY(1px)}
+/* ★ 响应式细节：手机端表格不撑破布局 → 外层横向滚动容器 */
+.md-table-wrap{overflow-x:auto;margin:10px 0;border-radius:10px;border:1px solid var(--border)}
+.md-table-wrap table{margin:0;border:none}
+.md-table-wrap th:first-child,.md-table-wrap td:first-child{border-left:none}
+/* ---- 代码块：语言标签 + 一键复制按钮（★ 任务 2）---- */
+.code-block{margin:10px 0;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0d1117}
+html[data-theme=light] .code-block{background:#f6f8fa;border-color:var(--border)}
+.cb-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:rgba(128,128,160,.08);border-bottom:1px solid var(--border);font-size:11.5px;color:var(--muted)}
+.cb-lang{text-transform:uppercase;letter-spacing:.08em;font-weight:600}
+.cb-copy{color:var(--muted);font-size:11.5px;padding:3px 9px;border-radius:7px;border:1px solid var(--border);background:var(--panel);transition:all var(--tr)}
+.cb-copy:hover{color:var(--text);border-color:var(--accent)}
+.code-block pre{margin:0;padding:12px 14px;overflow-x:auto;font-size:13px;line-height:1.65}
+.code-block pre code{font-family:ui-monospace,Consolas,"Courier New",monospace;background:none!important;padding:0}
+/* ★ 深色模式对比度优化：保证 hljs 高亮在深背景下清晰可读 */
+html[data-theme=dark] .content pre code.hljs{color:#e6edf3}
+html[data-theme=dark] .hljs-comment,html[data-theme=dark] .hljs-quote{color:#8b98ab}
+html[data-theme=light] .code-block .hljs{color:#24292e}
+.error-note{color:var(--danger);font-size:12.5px;margin-top:6px;display:flex;gap:6px;align-items:center}
+.retry-btn{color:var(--accent);font-size:12px;text-decoration:underline}
+
+/* ---- 图像 / 视频生成结果卡片（imageAI 品牌水印：右下角 · 粗体）---- */
+.media-card{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card);max-width:460px}
+.media-frame{position:relative;line-height:0}
+.media-frame img,.media-frame video{width:100%;display:block;max-height:420px;object-fit:contain;background:var(--panel)}
+.media-wm{position:absolute;right:10px;bottom:10px;font-weight:800;font-size:13px;color:#fff;letter-spacing:.4px;
+ background:rgba(0,0,0,.52);padding:4px 10px;border-radius:8px;pointer-events:none;user-select:none;
+ text-shadow:0 1px 3px rgba(0,0,0,.8);backdrop-filter:blur(3px);z-index:2}
+.media-cap{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;padding:8px 12px;font-size:12px;color:var(--muted);line-height:1.5}
+.media-cap .mc-prompt{flex-basis:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.media-dl{color:var(--accent);font-size:12px;text-decoration:none;border:1px solid var(--border);border-radius:7px;padding:2px 9px;transition:border-color var(--tr)}
+.media-dl:hover{border-color:var(--accent)}
+/* ---- 生成参数栏（视频模式：时长/分辨率）---- */
+.gen-opts{display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:12.5px;color:var(--muted);padding:2px 6px 8px;border-bottom:1px dashed var(--border)}
+.gen-opts label{display:flex;align-items:center;gap:8px}
+.gen-opts input[type=range]{width:130px;accent-color:var(--accent)}
+.gen-opts select{background:var(--input);border:1px solid var(--border);border-radius:7px;padding:3px 8px;font-size:12.5px;outline:none}
+.gen-opts b{color:var(--text);min-width:30px}
+.opt-max{font-size:11px;border:1px solid var(--border);border-radius:6px;padding:1px 6px}
+.gen-progress{height:5px;border-radius:3px;background:var(--hover);overflow:hidden;margin:8px 0 2px}
+.gen-bar{height:100%;width:0;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .4s ease}
+.dots-inline{display:inline-flex;gap:3px}
+.dots-inline i{width:4px;height:4px;border-radius:50%;background:currentColor;animation:bounce 1.2s infinite}
+.dots-inline i:nth-child(2){animation-delay:.2s}.dots-inline i:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-4px);opacity:1}}
+@media(max-width:860px){.media-card{max-width:100%}}
+
+/* ---- 思考过程面板（imageUI 专属）---- */
+.thinking-panel{border:1px solid var(--think-border);background:var(--think);border-radius:12px;margin-bottom:8px;overflow:hidden;font-size:13px}
+/* ★ 呼吸灯：流式思考期间，边框与背景做微弱律动 + 光晕扩散，感知"AI 正在推理" */
+.thinking-panel.streaming{animation:thinkBreath 2.4s ease-in-out infinite}
+@keyframes thinkBreath{
+ 0%,100%{border-color:var(--think-border);box-shadow:0 0 0 0 rgba(34,197,94,.16)}
+ 50%{border-color:#3f6f4a;box-shadow:0 0 18px 2px rgba(34,197,94,.12)}
+}
+html[data-theme=light] .thinking-panel.streaming{animation:thinkBreathL 2.4s ease-in-out infinite}
+@keyframes thinkBreathL{
+ 0%,100%{border-color:var(--think-border);box-shadow:0 0 0 0 rgba(22,163,74,.10)}
+ 50%{border-color:#9dc79b;box-shadow:0 0 16px 2px rgba(22,163,74,.10)}
+}
+@media(prefers-reduced-motion:reduce){.thinking-panel.streaming{animation:none;border-color:#3f6f4a}}
+.thinking-head{display:flex;align-items:center;gap:8px;padding:9px 13px;cursor:pointer;user-select:none;color:var(--muted)}
+.thinking-head:hover{color:var(--text)}
+.thinking-head .brain{animation:pulse 1.4s infinite}
+.thinking-head.done .brain{animation:none}
+.thinking-head .label{display:inline-flex;align-items:center;gap:2px}
+.thinking-head .dots{display:inline-flex;gap:3px;margin-left:4px}
+.thinking-head .dots span{width:4px;height:4px;border-radius:50%;background:currentColor;display:inline-block;animation:jump 1.2s infinite}
+.thinking-head .dots span:nth-child(2){animation-delay:.15s}.thinking-head .dots span:nth-child(3){animation-delay:.3s}
+.thinking-head .chev{margin-left:auto;transition:transform var(--tr);font-size:11px}
+.thinking-panel.open .chev{transform:rotate(90deg)}
+.thinking-body{display:none;padding:2px 14px 12px 14px;color:var(--muted);line-height:1.7;white-space:pre-wrap;max-height:260px;overflow-y:auto;border-top:1px dashed var(--think-border)}
+.thinking-panel.open .thinking-body{display:block}
+/* ★ Reasoning Core：流式思考时在面板正文末尾追加"光标"（由 app.js 控制 ::after 显隐），
+ *   呼吸灯 + 打字光标双重暗示"AI 正在推理"；prefers-reduced-motion 下自动关闭动画 */
+.thinking-panel.streaming .thinking-body::after{content:'▍';color:#22c55e;animation:blink 1s step-end infinite;margin-left:2px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ---- 401/403 认证失败红色警告框（含 API Key 设置入口）---- */
+.auth-alert{border:1.5px solid var(--danger);background:rgba(239,68,68,.08);border-radius:12px;padding:14px 16px;margin-top:10px}
+.aa-title{color:var(--danger);font-weight:700;font-size:14px;margin-bottom:6px}
+.aa-desc{font-size:12.5px;color:var(--muted);line-height:1.7;margin-bottom:10px}
+.aa-desc b{color:var(--danger)}
+.aa-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.aa-row input{flex:1;min-width:200px;background:var(--input);border:1px solid var(--danger);border-radius:9px;padding:8px 10px;font-size:13px;outline:none}
+.aa-row input:focus{box-shadow:0 0 0 2px rgba(239,68,68,.25)}
+.aa-btn{border:1px solid var(--border);background:var(--panel);border-radius:9px;padding:8px 14px;font-size:13px;color:var(--text);transition:all var(--tr)}
+.aa-btn:hover{background:var(--hover)}
+.aa-btn.primary{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:600}
+.aa-btn.danger{color:var(--danger)}
+/* ---- API Key 设置弹窗（Section 8）---- */
+.key-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
+.key-modal{width:min(560px,100%);max-height:82vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.km-title{font-size:15px;font-weight:700}
+/* ---- Key 管理弹窗：分区标题 / 列表条目 ---- */
+.km-sec-title{font-size:12.5px;font-weight:700;color:var(--accent2);margin-top:4px}
+.km-list{display:flex;flex-direction:column;gap:8px;max-height:230px;overflow:auto}
+.km-empty{font-size:12px;color:var(--muted);text-align:center;padding:14px;border:1px dashed var(--border);border-radius:10px}
+.km-item{display:flex;flex-wrap:wrap;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;padding:9px 11px;background:var(--card)}
+.km-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.km-meta b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.km-created{font-size:10.5px;color:var(--muted)}
+.km-code{flex-basis:100%;font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--input);border:1px solid var(--border);border-radius:7px;padding:5px 8px;word-break:break-all;color:var(--accent2)}
+.km-acts{display:flex;gap:6px;margin-left:auto}
+.km-acts .aa-btn{padding:4px 9px;font-size:11.5px}
+.km-sub{font-size:11px;color:var(--muted);font-weight:400;margin-left:6px}
+.km-msg{font-size:12.5px;color:var(--muted)}
+.key-modal input{background:var(--input);border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:13.5px;outline:none}
+.key-modal input:focus{border-color:var(--accent)}
+.km-risk{font-size:11.5px;color:var(--danger);background:rgba(239,68,68,.08);border:1px dashed var(--danger);border-radius:9px;padding:8px 10px;line-height:1.6}
+.km-row{display:flex;gap:8px;justify-content:flex-end}
+/* ---- 搜索命中高亮 ---- */
+mark.hit{background:rgba(250,204,21,.35);color:inherit;border-radius:3px;padding:0 1px}
+html[data-theme=dark] mark.hit{background:rgba(250,204,21,.28);color:#fde68a}
+
+/* ---- 打字光标 & 加载 ---- */
+.cursor{display:inline-block;width:7px;height:16px;background:var(--accent);border-radius:2px;vertical-align:-3px;animation:blink .8s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.dots span{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--muted);margin-right:4px;animation:jump 1.2s infinite}
+.dots span:nth-child(2){animation-delay:.15s}.dots span:nth-child(3){animation-delay:.3s}
+@keyframes jump{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+
+/* ---- 欢迎页 ---- */
+.welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px 20px;gap:14px}
+.welcome .big{font-size:44px;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:800}
+.welcome p{color:var(--muted);font-size:14px;max-width:460px;line-height:1.7}
+.chips{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:8px}
+.chip{border:1px solid var(--border);background:var(--panel);border-radius:12px;padding:10px 14px;font-size:13px;color:var(--text);transition:all var(--tr);max-width:220px;text-align:left}
+.chip:hover{border-color:var(--accent);transform:translateY(-2px)}
+.chip small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+
+/* ==================== 输入区 ==================== */
+.composer-wrap{padding:10px 20px 18px;background:linear-gradient(to top,var(--bg) 65%,transparent)}
+.composer{max-width:820px;margin:0 auto;border:1px solid var(--border);background:var(--panel);border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 6px 24px rgba(0,0,0,.15);transition:border-color var(--tr)}
+.composer:focus-within{border-color:var(--accent)}
+.composer textarea{width:100%;background:transparent;border:none;outline:none;resize:none;font-size:14.5px;line-height:1.6;max-height:160px;padding:4px 6px}
+.composer-bar{display:flex;align-items:center;gap:10px}
+.cur-model{font-size:11.5px;color:var(--muted);border:1px solid var(--border);padding:3px 9px;border-radius:8px;display:flex;align-items:center;gap:5px}
+.cur-model .dot{width:7px;height:7px;border-radius:50%;background:#22c55e}
+.hint{flex:1;font-size:11px;color:var(--muted);text-align:center}
+.btn-send{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center;transition:all var(--tr);position:relative;overflow:hidden}
+.btn-send:not(:disabled):hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(79,140,255,.35)}
+.btn-send:not(:disabled):active{transform:scale(.94)}
+/* ★ 任务 3-微交互：点击波纹（app.js 注入 span.ripple，550ms 自清理） */
+.btn-send .ripple{position:absolute;width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.55);transform:scale(0);animation:ripple .55s ease-out forwards;pointer-events:none}
+@keyframes ripple{to{transform:scale(9);opacity:0}}
+.btn-send:disabled{opacity:.35;cursor:not-allowed}
+.btn-stop{background:var(--danger)}
+
+/* ==================== 离线横幅 / Toast ==================== */
+.offline-banner{position:absolute;top:56px;left:0;right:0;background:#b45309;color:#fff;text-align:center;font-size:12.5px;padding:6px;z-index:20}
+.toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--card);color:var(--text);border:1px solid var(--border);padding:10px 18px;border-radius:12px;font-size:13px;opacity:0;transition:all .3s;z-index:99;box-shadow:0 8px 30px rgba(0,0,0,.3);pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ==================== 响应式 ==================== */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:25;display:none}
+@media(max-width:860px){
+ .sidebar{position:fixed;left:0;top:0;bottom:0;box-shadow:8px 0 30px rgba(0,0,0,.35)}
+ .sidebar.collapsed{margin-left:calc(var(--sbw)*-1)}
+ body.sb-open .overlay{display:block}
+ .chat-title{font-size:13px}
+ .hint{display:none}
+}
+@media(min-width:861px){body.sb-open .overlay{display:none}}
+.fade-in{animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ============ 侧边栏：对话列表 ============ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-head">
+      <div class="logo" title="image · WikiGroup 发明的 AI"><span class="img-logo"><svg viewBox="0 0 24 24" fill="none" stroke="url(#lg1)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><defs><linearGradient id="lg1" x1="0" y1="0" x2="24" y2="24"><stop offset="0" stop-color="#4f8cff"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/></svg></span><span class="spark">image</span><small style="font-size:10px;color:var(--muted);font-weight:400">· WikiGroup</small></div>
+      <button class="btn-new" id="btnNew" title="创建新的空白对话">＋</button>
+    </div>
+    <div class="sb-search"><input id="searchInput" type="text" placeholder="🔍 模糊搜索标题与内容…（Ctrl+K）"></div>
+    <nav class="conv-list" id="convList" aria-label="对话列表"></nav>
+    <div class="thinking-hint">💡 切换到 <b>imageUI</b> 终极版模型，回复中将展示可折叠的<b>思考过程</b>面板。</div>
+    <div class="sb-foot">
+      <button class="theme-toggle" id="btnTheme">🌙 深色模式</button>
+    </div>
+  </aside>
+
+  <!-- ============ 主区域 ============ -->
+  <main class="main">
+    <div class="offline-banner hidden" id="offlineBanner">⚠️ 网络连接已断开，回复将以本地模拟模式生成</div>
+    <header class="topbar">
+      <button class="btn-menu" id="btnMenu" title="收起/展开侧边栏">☰</button>
+      <!-- 模式切换：对话 / 图片 / 视频（imageAI 多模态） -->
+      <div class="mode-tabs" id="modeTabs" role="tablist" aria-label="生成模式">
+        <button class="mode-tab active" data-mode="chat" role="tab" title="文本对话">💬 对话</button>
+        <button class="mode-tab" data-mode="image" role="tab" title="AI 生成图片">🖼 图片</button>
+        <button class="mode-tab" data-mode="video" role="tab" title="AI 生成视频（最长 30 秒）">🎬 视频</button>
+      </div>
+      <div class="chat-title" id="chatTitle">新对话</div>
+      <button class="btn-key" id="btnKey" title="创建 / 管理 image API Key"><span class="key-dot"></span><span id="keyLabel">API Key</span></button>
+      <div class="model-select-wrap">
+        <select id="modelSelect" title="选择大模型">
+          <option value="image1.5">image1.5 · 基础版</option>
+          <option value="image2.1-turbo">image2.1 Turbo · 高速版</option>
+          <option value="imageMax">imageMax · 高性能版</option>
+          <option value="imageUI">imageUI · 终极版 🧠</option>
+        </select>
+      </div>
+      <button class="btn-clear" id="btnClear" title="清空当前对话消息；无消息时点击 = 打开 API Key 设置">🗑 清空</button>
+    </header>
+
+    <div class="chat-scroll" id="chatScroll">
+      <!-- 欢迎页（无消息时显示） -->
+      <div class="welcome" id="welcome">
+        <div class="big"><span class="img-logo" style="width:44px;height:44px;border-radius:12px;vertical-align:-8px;margin-right:10px"><svg viewBox="0 0 24 24" fill="none" stroke="url(#lg2)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:26px;height:26px"><defs><linearGradient id="lg2" x1="0" y1="0" x2="24" y2="24"><stop offset="0" stop-color="#4f8cff"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/></svg></span>image</div>
+        <p id="welcomeSub">由 WikiGroup 发明的 AI。每次打开都会自动开启一段全新对话，第一轮问答结束后 AI 会自动生成简短精准的总结性标题。</p>
+        <div class="chips" id="chips"></div>
+      </div>
+      <!-- 消息流 -->
+      <div class="chat-inner hidden" id="messages"></div>
+    </div>
+
+    <div class="composer-wrap">
+      <div class="composer">
+        <!-- 视频模式参数栏：时长（最长 30s）+ 分辨率 -->
+        <div class="gen-opts hidden" id="videoOpts">
+          <label>时长 <input type="range" id="vidDur" min="5" max="30" step="5" value="10"><b id="vidDurLabel">10s</b><span class="opt-max">最长 30s</span></label>
+          <label>分辨率 <select id="vidRes"><option value="720p">720p</option><option value="1080p" selected>1080p</option></select></label>
+        </div>
+        <textarea id="input" rows="1" placeholder="给 image 发消息…（Enter 发送，Shift+Enter 换行）"></textarea>
+        <div class="composer-bar">
+          <span class="cur-model"><span class="dot"></span><span id="curModelLabel">image1.5</span></span>
+          <span class="hint" id="composerHint">内容由 image AI（WikiGroup）生成，请仔细甄别 · Mock 模式下无需真实 API Key</span>
+          <button class="btn-send" id="btnSend" title="发送">➤</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="overlay" id="overlay"></div>
+<div class="toast" id="toast"></div>
+
+<!-- 应用逻辑（模块化组织，见下方各 Section） -->
+<!-- ★ 任务 2 · Markdown 渲染引擎（CDN，零构建；任一库加载失败 app.js 自动降级为纯文本，不影响使用）
+     marked = Markdown 解析 / DOMPurify = XSS 消毒 / highlight.js = 代码高亮（深色主题 + JS/Python/HTML/CSS 常用语言） -->
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/languages/python.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/languages/xml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/languages/css.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css"></script>
+<script src="app.js"></script>
+</body>
+</html>
