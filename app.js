@@ -402,6 +402,67 @@ function fallbackTitle(userMsg) {
 }
 
 /* ============================ Section 5 · UI ============================ */
+
+/* ---- 5.0 Markdown 渲染引擎（★ 任务 2：marked.js + highlight.js，CDN 加载，失败自动降级）----
+ * 渲染管线：Markdown → HTML → DOMPurify 消毒（防 XSS）→ hljs 代码高亮 → 复制按钮/表格包裹
+ * CDN 未加载（离线/被墙）时 renderMarkdown 自动退回 escapeHtml+pre-wrap 纯文本，功能不中断。 */
+const MD = { ready: false };                       // marked 是否可用（由 Boot 探测置位）
+
+/** 安全解析：marked.parse 抛错或不可用时退回转义纯文本 */
+function safeParseMD(src) {
+  if (MD.ready && window.marked) {
+    try { return window.marked.parse(src); } catch { /* fallthrough */ }
+  }
+  return `<div style="white-space:pre-wrap">${escapeHtml(src)}</div>`;
+}
+/** XSS 防护：优先 DOMPurify；库缺失时用保守正则黑名单兜底（生产建议保证三库可达） */
+function sanitize(html) {
+  if (window.DOMPurify) return window.DOMPurify.sanitize(html, { ADD_ATTR: ['target'] });
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\son\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/(href|src)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1="#"');
+}
+/** 代码块增强：包 .code-block（横向滚动容器）+ 语言标签 + 一键复制按钮 */
+function enhanceCodeBlocks(root) {
+  root.querySelectorAll('pre > code').forEach((codeEl) => {
+    const pre = codeEl.parentElement;
+    if (pre.parentElement.classList.contains('code-block')) return;
+    const lang = (codeEl.className.match(/language-([\w+#-]+)/) || [, 'text'])[1];
+    const wrap = document.createElement('div');
+    wrap.className = 'code-block';
+    wrap.innerHTML = `<div class="cb-bar"><span class="cb-lang">${escapeHtml(lang)}</span>` +
+      `<button class="cb-copy" title="复制代码">📋 复制</button></div>`;
+    pre.replaceWith(wrap); wrap.appendChild(pre);
+    wrap.querySelector('.cb-copy').addEventListener('click', async (e) => {
+      try { await navigator.clipboard.writeText(codeEl.textContent); }
+      catch {                                            // file:// 等非安全上下文降级方案
+        const ta = document.createElement('textarea');
+        ta.value = codeEl.textContent; document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy'); ta.remove();
+      }
+      e.currentTarget.textContent = '✅ 已复制';
+      setTimeout(() => { e.currentTarget.textContent = '📋 复制'; }, 1500);
+    });
+  });
+}
+/** 表格增强：外层 .md-table-wrap 提供横向滚动，手机端不撑破布局 */
+function enhanceTables(root) {
+  root.querySelectorAll('table').forEach((t) => {
+    if (t.parentElement.classList.contains('md-table-wrap')) return;
+    const w = document.createElement('div');
+    w.className = 'md-table-wrap'; t.replaceWith(w); w.appendChild(t);
+  });
+}
+/** 主入口：把消息文本渲染为安全的 Markdown HTML（thinking 思考链不走此函数，保持原样 pre-wrap） */
+function renderMarkdown(text, container) {
+  container.innerHTML = sanitize(safeParseMD(text || ''));
+  if (window.hljs) {
+    try { container.querySelectorAll('pre code').forEach((b) => window.hljs.highlightElement(b)); } catch { /* 高亮失败不影响正文 */ }
+  }
+  enhanceCodeBlocks(container);
+  enhanceTables(container);
+}
 const $ = (id) => document.getElementById(id);
 const el = {
   sidebar: $('sidebar'), convList: $('convList'), btnNew: $('btnNew'), searchInput: $('searchInput'),
@@ -517,6 +578,38 @@ function startRename(item, conv) {
   });
 }
 
+/* ---- 5.1 Markdown 流式渲染调度（★ Reasoning Core：性能优先）----
+ * 策略：rAF 合帧 + "打字中只解析最后一个未闭合块"——
+ *   已完成的段落/代码块序列化成字符串缓存，每帧只对尾部增量跑 marked.parse，
+ *   长回复的流式渲染开销从 O(n²) 降为近似 O(n)。思考链(thinking)保持纯文本不走此管线。 */
+const mdCache = new WeakMap();          // container -> { src, raf }
+function scheduleMarkdown(container, text) {
+  const st = mdCache.get(container) || {};
+  mdCache.set(container, st);
+  st.src = text;
+  if (st.raf) return;                   // 本帧已排队，合并高频 token 更新
+  st.raf = requestAnimationFrame(() => {
+    st.raf = null;
+    const parts = (st.src || '').split('\n\n');
+    let html = '';
+    for (let i = 0; i < parts.length; i++) {
+      if (i === parts.length - 1) {     // 仅最后一块实时解析（可能是未闭合的代码块/表格）
+        html += safeParseMD(parts[i]);
+      } else {
+        if (!st.cache) st.cache = [];
+        if (st.cache[i] === undefined) st.cache[i] = safeParseMD(parts[i]);
+        html += st.cache[i];            // 历史块命中缓存，跳过重复解析
+      }
+    }
+    container.innerHTML = sanitize(html);
+    if (window.hljs) {
+      try { container.querySelectorAll('pre code:not(.hljs-done)').forEach((b) => { window.hljs.highlightElement(b); b.classList.add('hljs-done'); }); } catch {}
+    }
+    enhanceCodeBlocks(container);
+    enhanceTables(container);
+  });
+}
+
 /* ---- 5.2 消息渲染 ---- */
 /* 为一条 assistant 回复创建 DOM（含 imageUI 专属的思考过程面板），返回增量更新所需的节点引用 */
 function createAssistantNodes(conv, msg) {
@@ -613,7 +706,7 @@ function renderMessages() {
       }
       const content = document.createElement('div');
       content.className = 'content';
-      content.textContent = m.content || '—';
+      renderMarkdown(m.content || '—', content);              // ★ 历史消息：完整 Markdown 渲染（含高亮/复制按钮）
       bubble.appendChild(content);
       if (m.error) {
         const err = document.createElement('div');
@@ -742,14 +835,14 @@ async function sendMessage() {
       onDelta: (seg) => {
         if (!reply.content) nodes.content.innerHTML = '';   // 首 token 到达，移除加载动画
         reply.content += seg;
-        nodes.content.textContent = reply.content;
+        scheduleMarkdown(nodes.content, reply.content);     // ★ Markdown 流式渲染（rAF 合帧 + 增量解析）
         scrollBottom();
       },
     });
   } catch (e) {
     if (e.name === 'AbortError') {
       reply.content += reply.content ? '\n（已停止生成）' : '（已停止生成）';
-      nodes.content.textContent = reply.content;
+      scheduleMarkdown(nodes.content, reply.content);
     } else if (e.name === 'AuthError') {
       /* ★ 401/403：标记认证失败 → renderAll() 时在聊天区弹出红色警告框 + Key 设置入口 */
       reply.error = e.message;
@@ -764,6 +857,7 @@ async function sendMessage() {
   } finally {
     reply._streaming = false;                               // 流式结束：清除进行中标记（呼吸灯状态依据）
     reply.ts = now();
+    scheduleMarkdown(nodes.content, reply.content || '—');  // ★ 收尾：确保最终完整 Markdown 渲染落屏
     if (nodes.thinkHead) {                                  // 思考面板收尾：停止呼吸灯、标记完成并自动折叠
       nodes.panel.classList.remove('streaming');
       nodes.thinkHead.classList.add('done');
@@ -858,7 +952,17 @@ function autoGrow() {
 }
 
 function bindEvents() {
-  el.btnSend.addEventListener('click', () => activeConv() && (el.btnSend.classList.contains('btn-stop') ? stopGeneration() : sendMessage()));
+  el.btnSend.addEventListener('click', (e) => {
+    /* ★ 任务 3-微交互：发送按钮点击波纹（span.ripple 注入 + CSS scale/fade 动画，550ms 后自清理） */
+    const b = e.currentTarget;
+    if (!b.disabled) {
+      const r = document.createElement('span'); r.className = 'ripple';
+      const rect = b.getBoundingClientRect();
+      r.style.left = `${e.clientX - rect.left}px`; r.style.top = `${e.clientY - rect.top}px`;
+      b.appendChild(r); setTimeout(() => r.remove(), 550);
+    }
+    activeConv() && (b.classList.contains('btn-stop') ? stopGeneration() : sendMessage());
+  });
   el.input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage(); }
   });
@@ -926,6 +1030,19 @@ function bindEvents() {
 }
 
 (function boot() {
+  /* ★ Markdown 引擎探测：CDN 脚本（marked/DOMPurify/hljs）在 app.js 之前同步加载；
+     若离线或被拦截则 MD.ready=false，渲染自动降级为纯文本 —— 界面功能不中断 */
+  if (window.marked) {
+    try {
+      window.marked.setOptions({ gfm: true, breaks: true });   // GFM：表格/删除线/任务列表 - [ ]
+      window.marked.use({ renderer: {
+        link(href, title, text) {                                // 外链统一新窗口打开 + rel 加固
+          return `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+        } } });
+      MD.ready = true;
+    } catch { MD.ready = false; }
+  }
+
   /* 恢复主题偏好 */
   const theme = localStorage.getItem('imageai-theme') || 'dark';
   document.documentElement.dataset.theme = theme;
