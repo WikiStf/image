@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>imageAI Chat · 智能对话工作台</title>
+<title>image · WikiGroup 发明的 AI</title>
 <style>
 /* ==================== 主题变量 ==================== */
 :root{--sbw:280px;--radius:14px;--tr:.25s ease}
@@ -20,8 +20,13 @@ html,body{height:100%}
 body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--text);transition:background var(--tr),color var(--tr);overflow:hidden}
 ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:8px}
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
-textarea,input{font-family:inherit;color:var(--text)}
+textarea,input,select{font-family:inherit;color:var(--text)}
 .hidden{display:none!important}
+
+/* ---- image 品牌 Logo（文字标：渐变描边圆角框 + 渐变字，无图片依赖）---- */
+.img-logo{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:7px;flex-shrink:0;
+ border:1.5px solid transparent;background:linear-gradient(var(--panel),var(--panel)) padding-box,linear-gradient(135deg,var(--accent),var(--accent2)) border-box}
+.img-logo svg{width:16px;height:16px;display:block}
 
 /* ==================== 整体布局 ==================== */
 .app{display:flex;height:100vh;width:100%}
@@ -65,6 +70,16 @@ textarea,input{font-family:inherit;color:var(--text)}
 .btn-menu:hover{background:var(--hover);color:var(--text)}
 .chat-title{flex:1;min-width:0;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chat-title .ai-badge{font-size:10px;font-weight:500;color:var(--accent2);border:1px solid var(--accent2);border-radius:6px;padding:1px 5px;margin-left:8px;vertical-align:1px}
+/* ---- 模式切换（对话 / 图片 / 视频）分段控件 ---- */
+.mode-tabs{display:flex;gap:2px;background:var(--input);border:1px solid var(--border);border-radius:10px;padding:3px}
+.mode-tab{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);padding:5px 11px;border-radius:8px;transition:background var(--tr),color var(--tr);white-space:nowrap}
+.mode-tab:hover{color:var(--text)}
+.mode-tab.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:600}
+/* ---- API Key 徽章按钮 ---- */
+.btn-key{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:9px;padding:6px 11px;transition:border-color var(--tr),color var(--tr);white-space:nowrap}
+.btn-key:hover{border-color:var(--accent);color:var(--text)}
+.btn-key .key-dot{width:8px;height:8px;border-radius:50%;background:var(--danger);box-shadow:0 0 6px var(--danger)}
+.btn-key.has-key .key-dot{background:#22c55e;box-shadow:0 0 6px #22c55e}
 .model-select-wrap{position:relative}
 #modelSelect{appearance:none;background:var(--input);border:1px solid var(--border);border-radius:10px;padding:8px 34px 8px 12px;font-size:13px;cursor:pointer;outline:none;transition:border-color var(--tr)}
 #modelSelect:focus{border-color:var(--accent)}
@@ -128,6 +143,32 @@ html[data-theme=light] .code-block .hljs{color:#24292e}
 .error-note{color:var(--danger);font-size:12.5px;margin-top:6px;display:flex;gap:6px;align-items:center}
 .retry-btn{color:var(--accent);font-size:12px;text-decoration:underline}
 
+/* ---- 图像 / 视频生成结果卡片（imageAI 品牌水印：右下角 · 粗体）---- */
+.media-card{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card);max-width:460px}
+.media-frame{position:relative;line-height:0}
+.media-frame img,.media-frame video{width:100%;display:block;max-height:420px;object-fit:contain;background:var(--panel)}
+.media-wm{position:absolute;right:10px;bottom:10px;font-weight:800;font-size:13px;color:#fff;letter-spacing:.4px;
+ background:rgba(0,0,0,.52);padding:4px 10px;border-radius:8px;pointer-events:none;user-select:none;
+ text-shadow:0 1px 3px rgba(0,0,0,.8);backdrop-filter:blur(3px);z-index:2}
+.media-cap{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;padding:8px 12px;font-size:12px;color:var(--muted);line-height:1.5}
+.media-cap .mc-prompt{flex-basis:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.media-dl{color:var(--accent);font-size:12px;text-decoration:none;border:1px solid var(--border);border-radius:7px;padding:2px 9px;transition:border-color var(--tr)}
+.media-dl:hover{border-color:var(--accent)}
+/* ---- 生成参数栏（视频模式：时长/分辨率）---- */
+.gen-opts{display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:12.5px;color:var(--muted);padding:2px 6px 8px;border-bottom:1px dashed var(--border)}
+.gen-opts label{display:flex;align-items:center;gap:8px}
+.gen-opts input[type=range]{width:130px;accent-color:var(--accent)}
+.gen-opts select{background:var(--input);border:1px solid var(--border);border-radius:7px;padding:3px 8px;font-size:12.5px;outline:none}
+.gen-opts b{color:var(--text);min-width:30px}
+.opt-max{font-size:11px;border:1px solid var(--border);border-radius:6px;padding:1px 6px}
+.gen-progress{height:5px;border-radius:3px;background:var(--hover);overflow:hidden;margin:8px 0 2px}
+.gen-bar{height:100%;width:0;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .4s ease}
+.dots-inline{display:inline-flex;gap:3px}
+.dots-inline i{width:4px;height:4px;border-radius:50%;background:currentColor;animation:bounce 1.2s infinite}
+.dots-inline i:nth-child(2){animation-delay:.2s}.dots-inline i:nth-child(3){animation-delay:.4s}
+@keyframes bounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-4px);opacity:1}}
+@media(max-width:860px){.media-card{max-width:100%}}
+
 /* ---- 思考过程面板（imageUI 专属）---- */
 .thinking-panel{border:1px solid var(--think-border);background:var(--think);border-radius:12px;margin-bottom:8px;overflow:hidden;font-size:13px}
 /* ★ 呼吸灯：流式思考期间，边框与背景做微弱律动 + 光晕扩散，感知"AI 正在推理" */
@@ -173,8 +214,19 @@ html[data-theme=light] .thinking-panel.streaming{animation:thinkBreathL 2.4s eas
 .aa-btn.danger{color:var(--danger)}
 /* ---- API Key 设置弹窗（Section 8）---- */
 .key-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px}
-.key-modal{width:min(460px,100%);background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.key-modal{width:min(560px,100%);max-height:82vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
 .km-title{font-size:15px;font-weight:700}
+/* ---- Key 管理弹窗：分区标题 / 列表条目 ---- */
+.km-sec-title{font-size:12.5px;font-weight:700;color:var(--accent2);margin-top:4px}
+.km-list{display:flex;flex-direction:column;gap:8px;max-height:230px;overflow:auto}
+.km-empty{font-size:12px;color:var(--muted);text-align:center;padding:14px;border:1px dashed var(--border);border-radius:10px}
+.km-item{display:flex;flex-wrap:wrap;align-items:center;gap:8px;border:1px solid var(--border);border-radius:10px;padding:9px 11px;background:var(--card)}
+.km-meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.km-meta b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.km-created{font-size:10.5px;color:var(--muted)}
+.km-code{flex-basis:100%;font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--input);border:1px solid var(--border);border-radius:7px;padding:5px 8px;word-break:break-all;color:var(--accent2)}
+.km-acts{display:flex;gap:6px;margin-left:auto}
+.km-acts .aa-btn{padding:4px 9px;font-size:11.5px}
 .km-sub{font-size:11px;color:var(--muted);font-weight:400;margin-left:6px}
 .km-msg{font-size:12.5px;color:var(--muted)}
 .key-modal input{background:var(--input);border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:13.5px;outline:none}
@@ -243,7 +295,8 @@ html[data-theme=dark] mark.hit{background:rgba(250,204,21,.28);color:#fde68a}
   <!-- ============ 侧边栏：对话列表 ============ -->
   <aside class="sidebar" id="sidebar">
     <div class="sb-head">
-      <button class="btn-new" id="btnNew" title="创建新的空白对话">＋ 新建对话</button>
+      <div class="logo" title="image · WikiGroup 发明的 AI"><span class="img-logo"><svg viewBox="0 0 24 24" fill="none" stroke="url(#lg1)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><defs><linearGradient id="lg1" x1="0" y1="0" x2="24" y2="24"><stop offset="0" stop-color="#4f8cff"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/></svg></span><span class="spark">image</span><small style="font-size:10px;color:var(--muted);font-weight:400">· WikiGroup</small></div>
+      <button class="btn-new" id="btnNew" title="创建新的空白对话">＋</button>
     </div>
     <div class="sb-search"><input id="searchInput" type="text" placeholder="🔍 模糊搜索标题与内容…（Ctrl+K）"></div>
     <nav class="conv-list" id="convList" aria-label="对话列表"></nav>
@@ -258,7 +311,14 @@ html[data-theme=dark] mark.hit{background:rgba(250,204,21,.28);color:#fde68a}
     <div class="offline-banner hidden" id="offlineBanner">⚠️ 网络连接已断开，回复将以本地模拟模式生成</div>
     <header class="topbar">
       <button class="btn-menu" id="btnMenu" title="收起/展开侧边栏">☰</button>
+      <!-- 模式切换：对话 / 图片 / 视频（imageAI 多模态） -->
+      <div class="mode-tabs" id="modeTabs" role="tablist" aria-label="生成模式">
+        <button class="mode-tab active" data-mode="chat" role="tab" title="文本对话">💬 对话</button>
+        <button class="mode-tab" data-mode="image" role="tab" title="AI 生成图片">🖼 图片</button>
+        <button class="mode-tab" data-mode="video" role="tab" title="AI 生成视频（最长 30 秒）">🎬 视频</button>
+      </div>
       <div class="chat-title" id="chatTitle">新对话</div>
+      <button class="btn-key" id="btnKey" title="创建 / 管理 image API Key"><span class="key-dot"></span><span id="keyLabel">API Key</span></button>
       <div class="model-select-wrap">
         <select id="modelSelect" title="选择大模型">
           <option value="image1.5">image1.5 · 基础版</option>
@@ -267,20 +327,15 @@ html[data-theme=dark] mark.hit{background:rgba(250,204,21,.28);color:#fde68a}
           <option value="imageUI">imageUI · 终极版 🧠</option>
         </select>
       </div>
-      <button class="btn-clear" id="btnClear" title="清空当前对话消息；无消息时点击 = 打开 API Key 设置">🗑 清空 · 🔑Key</button>
+      <button class="btn-clear" id="btnClear" title="清空当前对话消息；无消息时点击 = 打开 API Key 设置">🗑 清空</button>
     </header>
 
     <div class="chat-scroll" id="chatScroll">
       <!-- 欢迎页（无消息时显示） -->
       <div class="welcome" id="welcome">
-        <div class="big">imageAI Chat</div>
-        <p>每次打开都会自动开启一段全新对话。第一轮问答结束后，AI 会自动为本次对话生成简短精准的总结性标题。</p>
-        <div class="chips" id="chips">
-          <button class="chip">帮我写个 Python 爬虫<small>代码生成</small></button>
-          <button class="chip">解释一下量子纠缠<small>知识问答</small></button>
-          <button class="chip">为产品发布会写一份文案<small>创意写作</small></button>
-          <button class="chip">对比 React 和 Vue 的优劣<small>技术选型</small></button>
-        </div>
+        <div class="big"><span class="img-logo" style="width:44px;height:44px;border-radius:12px;vertical-align:-8px;margin-right:10px"><svg viewBox="0 0 24 24" fill="none" stroke="url(#lg2)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:26px;height:26px"><defs><linearGradient id="lg2" x1="0" y1="0" x2="24" y2="24"><stop offset="0" stop-color="#4f8cff"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs><path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/></svg></span>image</div>
+        <p id="welcomeSub">由 WikiGroup 发明的 AI。每次打开都会自动开启一段全新对话，第一轮问答结束后 AI 会自动生成简短精准的总结性标题。</p>
+        <div class="chips" id="chips"></div>
       </div>
       <!-- 消息流 -->
       <div class="chat-inner hidden" id="messages"></div>
@@ -288,10 +343,15 @@ html[data-theme=dark] mark.hit{background:rgba(250,204,21,.28);color:#fde68a}
 
     <div class="composer-wrap">
       <div class="composer">
-        <textarea id="input" rows="1" placeholder="给 imageAI 发消息…（Enter 发送，Shift+Enter 换行）"></textarea>
+        <!-- 视频模式参数栏：时长（最长 30s）+ 分辨率 -->
+        <div class="gen-opts hidden" id="videoOpts">
+          <label>时长 <input type="range" id="vidDur" min="5" max="30" step="5" value="10"><b id="vidDurLabel">10s</b><span class="opt-max">最长 30s</span></label>
+          <label>分辨率 <select id="vidRes"><option value="720p">720p</option><option value="1080p" selected>1080p</option></select></label>
+        </div>
+        <textarea id="input" rows="1" placeholder="给 image 发消息…（Enter 发送，Shift+Enter 换行）"></textarea>
         <div class="composer-bar">
           <span class="cur-model"><span class="dot"></span><span id="curModelLabel">image1.5</span></span>
-          <span class="hint">内容由 AI 生成，请仔细甄别 · Mock 模式下无需 API Key</span>
+          <span class="hint" id="composerHint">内容由 image AI（WikiGroup）生成，请仔细甄别 · Mock 模式下无需真实 API Key</span>
           <button class="btn-send" id="btnSend" title="发送">➤</button>
         </div>
       </div>

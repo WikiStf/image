@@ -1,27 +1,36 @@
 /* =====================================================================
- * imageAI Chat — 单页 AI 聊天应用逻辑
+ * image（WikiGroup 发明的 AI）— 单页 AI 聊天 / 图像 / 视频生成应用逻辑
  * ---------------------------------------------------------------------
  * 模块划分（逻辑分离，便于维护）：
  *   Section 1  CONFIG     —— 全局配置（含真实 API 接入点标记）
  *   Section 2  Store      —— 数据层：对话/消息的增删改查 + localStorage 持久化
  *   Section 3  LLM        —— 大模型接入层：Mock SSE 流式实现（可替换为真实端点）
  *   Section 4  TitleGen   —— 智能标题生成（调用大模型总结，禁止直接使用原问题）
- *   Section 5  UI         —— 视图渲染：侧边栏 / 消息流 / 思考过程面板
+ *   Section 5  UI         —— 视图渲染：侧边栏 / 消息流 / 思考过程面板 / 媒体卡片
  *   Section 6  Actions    —— 业务编排：发送、停止、新建、切换、删除、重命名…
  *   Section 7  Boot       —— 启动入口：自动初始化新会话、事件绑定
+ *   Section 8  KeyUI      —— API Key 管理弹窗（image-* 自创 Key，供外部调用 imageAI 服务）
+ *   Section 9  MediaGen   —— 图片 / 视频生成（image-1 / image-video 模型，水印「imageAI生成」）
  * ===================================================================== */
 'use strict';
 
 /* ============================ Section 1 · CONFIG ============================ */
 const CONFIG = {
   USE_MOCK: true,                       // ★ 改为 false 并配置 ENDPOINT 即可接入真实大模型
-  /* ★★★【替换点 L23 / L209-217 / L268】生产环境请把 ENDPOINT 指向本地代理（如 http://localhost:3001/v1/chat/completions），
+  /* ★★★【替换点 L25 / realStream / generateTitle】生产环境请把 ENDPOINT 指向本地代理（如 http://localhost:3001/v1），
    * 由 proxy-server.js 携带 Key 转发上游 —— ⚠️⚠️⚠️ 生产环境严禁在前端代码/浏览器中暴露 API Key！ */
-  ENDPOINT: '/v1/chat/completions',     // ★【替换点】OpenAI 兼容端点：推荐走本地代理；直连示例 https://api.deepseek.com/v1/chat/completions
+  API_BASE: '/v1',                      // ★【替换点】OpenAI 兼容根路径：推荐走本地代理；直连示例 https://api.deepseek.com/v1
+  get ENDPOINT() { return this.API_BASE + '/chat/completions'; },
+  get IMAGES_ENDPOINT() { return this.API_BASE + '/images/generations'; },   // ★ 真实图片生成端点（DALL·E / SD / 即梦等按文档改）
+  get VIDEOS_ENDPOINT() { return this.API_BASE + '/videos'; },               // ★ 真实视频生成端点（可灵 / Runway / Sora 等按文档改）
   get API_KEY() { return localStorage.getItem('imageai-apikey') || ''; },
                                         // ↑ 密钥不再硬编码！仅从 localStorage 运行时读取（调试用途，见 Section 8）。
                                         //   ⚠️ 生产环境请勿在前端暴露 Key —— 正式部署务必改用后端代理注入（见任务 2 推荐方案）。
   STORAGE_KEY: 'imageai-chat-v1',
+  KEYS_STORE: 'imageai-keys-v1',        // 「我的 image API Keys」列表（image-* Key，供在其他地方享受 imageAI 服务）
+  BRAND: 'image', BRAND_OWNER: 'WikiGroup',
+  WATERMARK: 'imageAI生成',              // ★ 图片/视频右下角水印文案（CSS .media-wm font-weight:800 粗体）
+  VIDEO_MAX_SECONDS: 30,                // ★ 视频最长时长：30 秒
   DEFAULT_MODEL: 'image1.5',
   TITLE_MODEL: 'image1.5',              // 标题生成使用的轻量模型（真实接入时映射到便宜快速的模型）
   /* 前端模型 id → 真实 API 的 model 名称映射（DeepSeek/Qwen/vLLM 等按各自文档修改） */
@@ -31,16 +40,21 @@ const CONFIG = {
     'imageMax':       'gpt-4.1',            // ★【替换点】高性能版
     'imageUI':        'deepseek-reasoner',  // ★【替换点】终极版：须为"推理模型"（DeepSeek-R1 / QwQ / o系列等），
                                             //   只有推理模型才会返回 delta.reasoning_content，思考面板才有真实内容
+    'image-1':        'dall-e-3',           // ★【替换点】图片生成模型（文生图）
+    'image-video':    'kling-v1',           // ★【替换点】视频生成模型（文生视频，duration ≤ 30s）
   },
 };
 const mapModel = (id) => CONFIG.MODEL_MAP[id] || id;   // 未配置映射时原样透传
 
-/* 四个模型，按性能从低到高排列；supportsThinking 决定是否需要渲染思考过程面板 */
+/* 模型清单：按性能从低到高排列；supportsThinking 决定是否需要渲染思考过程面板；
+ * type: chat(文本对话) / image(文生图) / video(文生视频) —— 由顶栏模式切换联动过滤 */
 const MODELS = [
-  { id: 'image1.5',       name: 'image1.5',       tier: '基础版',   supportsThinking: false, speed: 28 },
-  { id: 'image2.1-turbo', name: 'image2.1 Turbo', tier: '高速版',   supportsThinking: false, speed: 10 },
-  { id: 'imageMax',       name: 'imageMax',       tier: '高性能版', supportsThinking: false, speed: 18 },
-  { id: 'imageUI',        name: 'imageUI',        tier: '终极版',   supportsThinking: true,  speed: 22 },
+  { id: 'image1.5',       name: 'image1.5',       tier: '基础版',   supportsThinking: false, speed: 28, type: 'chat' },
+  { id: 'image2.1-turbo', name: 'image2.1 Turbo', tier: '高速版',   supportsThinking: false, speed: 10, type: 'chat' },
+  { id: 'imageMax',       name: 'imageMax',       tier: '高性能版', supportsThinking: false, speed: 18, type: 'chat' },
+  { id: 'imageUI',        name: 'imageUI',        tier: '终极版',   supportsThinking: true,  speed: 22, type: 'chat' },
+  { id: 'image-1',        name: 'image-1',        tier: '图片生成', supportsThinking: false, speed: 30, type: 'image' },
+  { id: 'image-video',    name: 'image-video',    tier: '视频生成', supportsThinking: false, speed: 40, type: 'video' },
 ];
 const getModel = (id) => MODELS.find(m => m.id === id) || MODELS[0];
 
@@ -50,7 +64,7 @@ const getModel = (id) => MODELS.find(m => m.id === id) || MODELS[0];
  *                               titlePending, generating, messages:[ {role,content,thinking?,error?} } ] ],
  *           activeId }
  */
-const state = { conversations: [], activeId: null, authAlert: false };
+const state = { conversations: [], activeId: null, authAlert: false, mode: 'chat' };
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const now = () => Date.now();
@@ -471,6 +485,9 @@ const el = {
   chatScroll: $('chatScroll'), welcome: $('welcome'), messages: $('messages'), chips: $('chips'),
   input: $('input'), btnSend: $('btnSend'), curModelLabel: $('curModelLabel'),
   offlineBanner: $('offlineBanner'), toast: $('toast'),
+  modeTabs: $('modeTabs'), btnKey: $('btnKey'), keyLabel: $('keyLabel'),
+  videoOpts: $('videoOpts'), vidDur: $('vidDur'), vidDurLabel: $('vidDurLabel'), vidRes: $('vidRes'),
+  welcomeSub: $('welcomeSub'), composerHint: $('composerHint'),
 };
 
 const fmtTime = (ts) => { const d = new Date(ts); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
@@ -668,6 +685,42 @@ function finalizeAssistantNode(nodes, conv, msg) {
   }
 }
 
+/* 媒体卡片：图片/视频生成结果 —— ★ 右下角粗体水印「imageAI生成」（CSS .media-wm font-weight:800） */
+function buildMediaCard(m) {
+  const card = document.createElement('div');
+  card.className = 'media-card';
+  const frame = document.createElement('div');
+  frame.className = 'media-frame';
+  if (m.kind === 'video') {
+    const v = document.createElement('video');
+    v.src = m.mediaUrl; v.controls = true; v.loop = true; v.playsInline = true; v.preload = 'metadata';
+    frame.appendChild(v);
+  } else if (m.mediaBlob) {                                    // blob 型图片（本地重绘后转存）
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(m.mediaBlob); img.alt = m.content || 'AI 生成图片'; img.loading = 'lazy';
+    frame.appendChild(img);
+  } else {
+    const img = document.createElement('img');
+    img.src = m.mediaUrl; img.alt = m.content || 'AI 生成图片'; img.loading = 'lazy';
+    frame.appendChild(img);
+  }
+  const wm = document.createElement('span');
+  wm.className = 'media-wm'; wm.textContent = CONFIG.WATERMARK;      // ★ 水印文案（粗体样式在 CSS）
+  frame.appendChild(wm);
+  const cap = document.createElement('div');
+  cap.className = 'media-cap';
+  const metaBits = [m.mediaModel || '', m.mediaDuration ? `${m.mediaDuration}s` : '', m.mediaResolution || ''].filter(Boolean).join(' · ');
+  const p1 = document.createElement('span'); p1.className = 'mc-prompt'; p1.textContent = '“' + (m.content || '') + '”';
+  const p2 = document.createElement('span'); p2.textContent = metaBits || 'image AI';
+  const dl = document.createElement('a');
+  dl.className = 'media-dl'; dl.textContent = '⬇ 下载'; dl.href = m.mediaUrl;
+  dl.download = (m.kind === 'image' ? 'image-ai-' : 'image-video-') + (m.ts || now()) + (m.kind === 'image' ? '.png' : '.webm');
+  dl.target = '_blank'; dl.rel = 'noopener';
+  cap.append(p1, p2, dl);
+  card.append(frame, cap);
+  return card;
+}
+
 function renderMessages() {
   const conv = activeConv();
   el.messages.innerHTML = '';
@@ -685,6 +738,31 @@ function renderMessages() {
       row.querySelector('.meta').textContent = fmtTime(m.ts || now());
       el.messages.appendChild(row);
     } else {
+      /* 媒体消息（图片/视频生成结果）：渲染带水印的媒体卡片 */
+      if (m.kind === 'image' || m.kind === 'video') {
+        const row = document.createElement('div');
+        row.className = 'msg-row assistant fade-in';
+        const avatar = document.createElement('div');
+        avatar.className = 'avatar'; avatar.textContent = m.kind === 'video' ? '🎬' : '🖼';
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        bubble.appendChild(buildMediaCard(m));
+        if (m.error) {
+          const err = document.createElement('div');
+          err.className = 'error-note';
+          err.innerHTML = `⚠️ <span></span> <button class="retry-btn">重试</button>`;
+          err.querySelector('span').textContent = m.error;
+          err.querySelector('.retry-btn').addEventListener('click', () => retryLast(conv));
+          bubble.appendChild(err);
+        }
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = `${m.mediaModel || getModel(conv.model).name} · ${fmtTime(m.ts || now())}`;
+        bubble.appendChild(meta);
+        row.append(avatar, bubble);
+        el.messages.appendChild(row);
+        continue;
+      }
       /* 历史消息：静态渲染（含已完成状态的思考面板） */
       const row = document.createElement('div');
       row.className = 'msg-row assistant fade-in';
@@ -742,7 +820,13 @@ function renderHeader() {
   }
   const m = getModel(conv ? conv.model : CONFIG.DEFAULT_MODEL);
   el.curModelLabel.textContent = `${m.name} · ${m.tier}`;
+  /* 模型选择器选项由模式决定（chat/image/video），仅在值不存在时补建 */
+  if (!el.modelSelect.querySelector(`option[value="${m.id}"]`)) {
+    const o = document.createElement('option'); o.value = m.id; o.textContent = `${m.name} · ${m.tier}`;
+    el.modelSelect.appendChild(o);
+  }
   el.modelSelect.value = m.id;
+  updateKeyBadge();                                          // 顶栏 Key 徽章状态同步
 }
 
 /* ★ 任务 3-错误处理优化：401/403 → 聊天区醒目红色警告框 + API Key 设置入口（localStorage 临时存储，仅调试用） */
@@ -793,6 +877,9 @@ async function sendMessage() {
   const conv = activeConv();
   const text = el.input.value.trim();
   if (!conv || !text || conv.generating) return;
+
+  /* ★ 模式路由：图片 / 视频模式走 MediaGen（Section 9），对话模式走原 LLM 流 */
+  if (state.mode === 'image' || state.mode === 'video') return sendMediaMessage(conv, text);
 
   const isFirstRound = conv.messages.length === 0;
   conv.messages.push({ role: 'user', content: text, ts: now() });
@@ -891,6 +978,75 @@ async function sendMessage() {
   }
 }
 
+/** 图片 / 视频生成消息：进度条卡片 → 完成后渲染带「imageAI生成」粗体水印的媒体卡片 */
+async function sendMediaMessage(conv, text) {
+  const kind = state.mode;                                   // 'image' | 'video'
+  const modelId = kind === 'image' ? 'image-1' : 'image-video';
+  const duration = kind === 'video'
+    ? Math.min(Number(el.vidDur?.value) || 10, CONFIG.VIDEO_MAX_SECONDS)   // ★ 强制 ≤ 30s
+    : undefined;
+  const resolution = kind === 'video' ? (el.vidRes?.value || '1080p') : undefined;
+
+  conv.messages.push({ role: 'user', content: text, ts: now() });
+  el.input.value = ''; autoGrow();
+  const reply = { role: 'assistant', content: text, kind, mediaUrl: null, mediaModel: modelId,
+                  mediaDuration: duration, mediaResolution: resolution, _streaming: true, ts: now() };
+  conv.messages.push(reply);
+  conv.generating = true; conv.model = modelId;
+  saveState();
+
+  el.welcome.classList.add('hidden'); el.messages.classList.remove('hidden');
+  /* 进行中卡片：阶段文案 + 百分比进度条 */
+  const row = document.createElement('div');
+  row.className = 'msg-row assistant fade-in';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.innerHTML = `<div class="content"><b>${kind === 'video' ? '🎬 正在生成视频' : '🖼 正在生成图片'}…</b>
+      <div class="gen-progress"><div class="gen-bar"></div></div>
+      <span style="color:var(--muted);font-size:12px">准备中… 0%<span class="dots-inline"><i></i><i></i><i></i></span></span></div>`;
+  row.append(Object.assign(document.createElement('div'), { className: 'avatar', textContent: kind === 'video' ? '🎬' : '🖼' }), bubble);
+  el.messages.appendChild(row); renderSidebar(); renderHeader(); scrollBottom(true);
+
+  const bar = bubble.querySelector('.gen-bar');
+  const pctEl = bubble.querySelector('.content > span');
+  abortCtl = new AbortController();
+  setBusy(true);
+
+  let payload = null;
+  try {
+    payload = await generateMedia({
+      kind, prompt: text, duration, resolution, signal: abortCtl.signal,
+      onProgress: (label, pct) => { if (!abortCtl.signal.aborted) pctEl.innerHTML = `${escapeHtml(label)} ${pct}%`; bar.style.width = pct + '%'; },
+    });
+    reply.mediaUrl = payload.url;
+    if (payload.kind === 'image' && String(payload.url).startsWith('data:')) {
+      try { reply.mediaBlob = await (await fetch(payload.url)).blob(); reply.mediaUrl = null; } catch {}  // dataURL→Blob，节省存储配额
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') reply.error = '已停止生成';
+    else if (e.name === 'AuthError') { reply.error = e.message; state.authAlert = true; }
+    else reply.error = navigator.onLine ? (e.message || '生成失败') : '网络不可用，无法连接生成服务';
+    toast((reply.error || '').startsWith('已') ? '⏹ ' + reply.error : '❌ ' + reply.error);
+  } finally {
+    reply._streaming = false; reply.ts = now();
+    conv.generating = false; conv.updatedAt = now();
+    setBusy(false); saveState();
+    renderMessages();                                        // 完成/失败 → 整段重绘为媒体卡片（含水印）或错误提示
+    renderSidebar(); renderHeader();
+    /* 首轮生成同样触发 AI 标题总结（复用 Section 4 逻辑） */
+    if (conv.messages.length === 2 && !reply.error) {
+      conv.titlePending = true; renderSidebar(); renderHeader();
+      generateTitle(text, `这是一次${kind === 'video' ? '视频' : '图片'}生成：${text}`).then(title => {
+        const still = state.conversations.find(c => c.id === conv.id);
+        if (still && still.titlePending) { still.title = title; still.aiTitled = true; still.titlePending = false; saveState(); renderAll(); }
+      }).catch(() => {
+        const still = state.conversations.find(c => c.id === conv.id);
+        if (still) { still.title = fallbackTitle(text); still.titlePending = false; saveState(); renderAll(); }
+      });
+    }
+  }
+}
+
 function retryLast(conv) {          // 出错重试：删除失败的回复，重发上一条用户消息
   if (conv.generating) return;
   while (conv.messages.length && conv.messages[conv.messages.length - 1].role === 'assistant') conv.messages.pop();
@@ -904,6 +1060,57 @@ function retryLast(conv) {          // 出错重试：删除失败的回复，�
 
 function stopGeneration() { abortCtl && abortCtl.abort(); }
 
+/* ★ 模式切换（对话 / 图片 / 视频）：联动模型选择器、输入框占位符、欢迎页与视频参数栏 */
+const MODE_META = {
+  chat:  { ph: '给 image 发消息…（Enter 发送，Shift+Enter 换行）', title: '对话模式',
+           sub: '由 WikiGroup 发明的 AI。每次打开都会自动开启一段全新对话，第一轮问答结束后 AI 会自动生成简短精准的总结性标题。',
+           chips: [['帮我写个 Python 爬虫', '代码生成'], ['解释一下量子纠缠', '知识问答'], ['为产品发布会写一份文案', '创意写作'], ['对比 React 和 Vue 的优劣', '技术选型']] },
+  image: { ph: '描述你想生成的图片，例如：戴着宇航头盔的橘猫，星云背景，超写实…', title: '图片生成 · image-1',
+           sub: '输入画面描述，image-1 模型将为你生成图片；结果右下角自带「imageAI生成」粗体水印。',
+           chips: [['赛博朋克风格的重庆夜景，霓虹与雨雾', '场景'], ['一只戴着宇航头盔的橘猫，超写实', '动物'], ['极简主义咖啡店品牌海报设计', '设计'], ['水彩风格的江南水乡春天', '绘画']] },
+  video: { ph: '描述你想生成的视频画面与运镜，例如：无人机航拍雪山日出，缓慢推进…', title: '视频生成 · image-video',
+           sub: `支持文生视频，时长最长 ${CONFIG.VIDEO_MAX_SECONDS} 秒；结果右下角自带「imageAI生成」粗体水印。`,
+           chips: [['无人机航拍雪山日出，金色阳光洒满山脊，缓慢推进', '航拍'], ['咖啡拉花制作特写慢动作，热气升腾', '特写'], ['城市延时摄影，从白天到霓虹夜晚', '延时'], ['小柴犬在草地上欢快奔跑，低角度跟拍', '动物']] },
+};
+function applyMode(mode) {
+  state.mode = mode;
+  localStorage.setItem('imageai-mode', mode);
+  el.modeTabs.querySelectorAll('.mode-tab').forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
+  const meta = MODE_META[mode];
+  el.input.placeholder = meta.ph;
+  el.videoOpts.classList.toggle('hidden', mode !== 'video');
+  el.welcomeSub.textContent = meta.sub;
+  /* 重建示例问题（chip.firstChild.textContent 供点击填入输入框） */
+  el.chips.innerHTML = '';
+  for (const [txt, tag] of meta.chips) {
+    const b = document.createElement('button'); b.className = 'chip';
+    b.append(document.createTextNode(txt));
+    const s = document.createElement('small'); s.textContent = tag; b.appendChild(s);
+    b.addEventListener('click', () => { el.input.value = txt; autoGrow(); el.input.focus(); sendMessage(); });
+    el.chips.appendChild(b);
+  }
+  /* 模型选择器按模式过滤；会话模型自动对齐当前模式可用模型 */
+  fillModelOptions(mode);
+  const conv = activeConv();
+  if (conv) {
+    const ok = MODELS.find(m => m.type === mode && m.id === conv.model);
+    conv.model = mode === 'chat' ? (ok ? conv.model : (localStorage.getItem('imageai-model') || CONFIG.DEFAULT_MODEL))
+                                 : (mode === 'image' ? 'image-1' : 'image-video');
+    if (!ok && mode === 'chat') conv.model = localStorage.getItem('imageai-model') || CONFIG.DEFAULT_MODEL;
+    saveState();
+  }
+  renderHeader();
+  toast(`已切换到「${meta.title}」模式`);
+}
+function fillModelOptions(mode) {
+  el.modelSelect.innerHTML = '';
+  for (const m of MODELS.filter(x => x.type === mode)) {
+    const o = document.createElement('option');
+    o.value = m.id; o.textContent = `${m.name} · ${m.tier}`;
+    el.modelSelect.appendChild(o);
+  }
+}
+
 function setBusy(busy) {
   el.btnSend.classList.toggle('btn-stop', busy);
   el.btnSend.textContent = busy ? '■' : '➤';
@@ -913,36 +1120,298 @@ function setBusy(busy) {
 /* ============================ Section 8 · KeyUI ============================ */
 /* ★ 任务 2-简易方案的 UI 入口：随时打开"API Key 设置"弹窗（与 401 警告框共用 localStorage 存储）。
  * ⚠️⚠️⚠️ 生产环境请勿在前端暴露 Key —— 此入口仅为本地调试便利；正式部署请使用 proxy-server.js 后端注入。 */
+/* ---- 5.3 API Key 管理弹窗（imageAI Keys）：自创 Key + 上游 Key 设置，一站式管理 ---- */
 function openKeyDialog(prefillMsg) {
   const old = $('keyModal'); if (old) old.remove();
   const mask = document.createElement('div');
   mask.id = 'keyModal'; mask.className = 'key-mask';
   mask.innerHTML = `
     <div class="key-modal fade-in">
-      <div class="km-title">🔑 API Key 设置<span class="km-sub">（仅存本机浏览器，供调试使用）</span></div>
+      <div class="km-title">🔑 image API Keys<span class="km-sub">（创建你自己的 Key，随处调用 imageAI 服务）</span></div>
       ${prefillMsg ? `<div class="km-msg">${prefillMsg}</div>` : ''}
-      <input id="kmInput" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false">
-      <div class="km-risk">⚠️ 风险提示：localStorage 中的明文 Key 可被任何脚本读取；生产环境请勿在前端暴露 Key，务必改用后端代理（proxy-server.js）。</div>
+
+      <div class="km-sec-title">① 我的 image API Keys（本机签发 · 用于在其他地方享受 image AI 服务）</div>
+      <div class="km-row" style="margin-bottom:8px">
+        <input id="kmNewName" placeholder="Key 备注名，如「我的笔记本」「第三方 App」" autocomplete="off">
+        <button class="aa-btn primary" id="kmMint">＋ 创建 Key</button>
+      </div>
+      <div class="km-list" id="kmList"></div>
+
+      <div class="km-sec-title" style="margin-top:14px">② 上游模型服务 Key（本页面调用真实大模型时使用）</div>
       <div class="km-row">
+        <input id="kmInput" type="password" placeholder="sk-...（留空并保存 = 清除已存 Key）" autocomplete="off" spellcheck="false">
         <button class="aa-btn primary" id="kmSave">保存</button>
         <button class="aa-btn danger" id="kmClear">清除</button>
+      </div>
+      <div class="km-risk">⚠️ 风险提示：localStorage 中的明文 Key 可被任何脚本读取；生产环境请勿在前端暴露 Key，务必改用后端代理（proxy-server.js）。前端自创 Key 仅为本地凭证票据，正式部署应由服务端签发与校验。</div>
+      <div class="km-row" style="justify-content:flex-end;margin-top:10px">
         <button class="aa-btn" id="kmClose">关闭</button>
       </div>
     </div>`;
   document.body.appendChild(mask);
   const inp = mask.querySelector('#kmInput');
   inp.value = localStorage.getItem('imageai-apikey') || '';
-  inp.focus();
+
+  /* —— Key 列表渲染（默认掩码显示，可展开/复制/删除）—— */
+  const listBox = mask.querySelector('#kmList');
+  function renderKeyList() {
+    const keys = loadKeys();
+    listBox.innerHTML = '';
+    if (!keys.length) { listBox.innerHTML = '<div class="km-empty">还没有 Key —— 点上方「＋ 创建 Key」生成一个 image-sk-… 格式的专属密钥</div>'; return; }
+    for (const k of keys) {
+      const item = document.createElement('div');
+      item.className = 'km-item';
+      item.innerHTML = `
+        <div class="km-meta"><b></b><span class="km-created"></span></div>
+        <code class="km-code">${escapeHtml(k.key.slice(0, 13))}••••••${escapeHtml(k.key.slice(-4))}</code>
+        <div class="km-acts">
+          <button class="aa-btn km-toggle" title="显示/隐藏完整 Key">👁</button>
+          <button class="aa-btn km-copy" title="复制 Key">📋 复制</button>
+          <button class="aa-btn danger km-del" title="删除此 Key">✕</button>
+        </div>`;
+      item.querySelector('b').textContent = k.name;
+      item.querySelector('.km-created').textContent = new Date(k.createdAt).toLocaleDateString() + ' 创建';
+      const codeEl = item.querySelector('.km-code');
+      let shown = false;
+      item.querySelector('.km-toggle').addEventListener('click', () => {
+        shown = !shown;
+        codeEl.textContent = shown ? k.key : `${k.key.slice(0, 13)}••••••${k.key.slice(-4)}`;
+      });
+      item.querySelector('.km-copy').addEventListener('click', async (e) => {
+        try { await navigator.clipboard.writeText(k.key); }
+        catch { const ta = document.createElement('textarea'); ta.value = k.key; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+        e.currentTarget.textContent = '✅ 已复制'; setTimeout(() => e.currentTarget.textContent = '📋 复制', 1500);
+      });
+      item.querySelector('.km-del').addEventListener('click', () => {
+        if (!confirm(`删除 Key「${k.name}」？使用该 Key 的外部应用将立即失效。`)) return;
+        saveKeys(loadKeys().filter(x => x.id !== k.id)); renderKeyList(); updateKeyBadge(); toast('已删除 Key');
+      });
+      listBox.appendChild(item);
+    }
+  }
+  renderKeyList();
+
+  mask.querySelector('#kmMint').addEventListener('click', () => {
+    const name = mask.querySelector('#kmNewName').value.trim();
+    const rec = mintApiKey(name);
+    saveKeys([rec, ...loadKeys()]);
+    mask.querySelector('#kmNewName').value = '';
+    renderKeyList(); updateKeyBadge();
+    toast(`✅ 已创建 ${rec.key.slice(0, 13)}…${rec.key.slice(-4)}，可在任意支持自定义 Key 的应用中使用`);
+  });
   mask.addEventListener('click', (e) => { if (e.target === mask) mask.remove(); });
   mask.querySelector('#kmClose').addEventListener('click', () => mask.remove());
   mask.querySelector('#kmSave').addEventListener('click', () => {
     const v = inp.value.trim();
     if (v) localStorage.setItem('imageai-apikey', v); else localStorage.removeItem('imageai-apikey');
-    toast(v ? '🔑 Key 已保存到本地' : '已清除本地 Key'); mask.remove();
+    toast(v ? '🔑 上游 Key 已保存到本地' : '已清除本地 Key'); mask.remove();
   });
   mask.querySelector('#kmClear').addEventListener('click', () => {
     localStorage.removeItem('imageai-apikey'); toast('已清除本地 Key'); mask.remove();
   });
+}
+
+/** 顶栏 Key 徽章：有任一 Key（自创或上游）→ 绿点 + 数量 */
+function updateKeyBadge() {
+  const mine = loadKeys().length;
+  const upstream = localStorage.getItem('imageai-apikey') ? 1 : 0;
+  const total = mine + upstream;
+  el.btnKey.classList.toggle('has-key', total > 0);
+  el.keyLabel.textContent = total ? `API Key · ${mine}${upstream ? ' +上游' : ''}` : 'API Key';
+  el.btnKey.title = total ? `已配置 ${mine} 个自建 Key${upstream ? ' + 1 个上游 Key' : ''}，点击查看/管理` : '点击创建你的 image API Key';
+}
+
+/* ---- 9.0 API Key 签发中心（imageAI Keys）----
+ * 用户可自创 API Key（形如 image-sk-xxxx），用于在其他地方/其他应用中享受 imageAI 服务。
+ * ⚠️⚠️⚠️ 生产环境请勿在前端暴露/校验真实 Key —— 前端生成的 Key 仅作为"访问凭证票据"，
+ *      正式部署必须由服务端签发并校验（见 proxy-server.js /v1/keys 接口）。 */
+const KEY_PREFIX = 'image-sk-';
+function loadKeys() { try { return JSON.parse(localStorage.getItem(CONFIG.KEYS_STORE)) || []; } catch { return []; } }
+function saveKeys(list) { try { localStorage.setItem(CONFIG.KEYS_STORE, JSON.stringify(list)); } catch {} }
+/** 生成一个 image-* 前缀的随机 Key（crypto 强随机；降级 Math.random） */
+function mintApiKey(name) {
+  const rnd = () => {
+    if (window.crypto?.getRandomValues) {
+      const a = new Uint8Array(24); crypto.getRandomValues(a);
+      return Array.from(a, b => b.toString(36).padStart(2, '0')).join('').slice(0, 32);
+    }
+    return (Math.random().toString(36) + Math.random().toString(36)).slice(2, 34);
+  };
+  return { id: uid(), name: name || '未命名 Key', key: KEY_PREFIX + rnd(), createdAt: now(), lastUsedAt: null };
+}
+
+/* ============================ Section 9 · MediaGen（图片 / 视频生成） ============================ */
+/* 统一签名：generateMedia({kind, prompt, model, size, duration, resolution, onProgress, signal})
+ *   -> Promise<{ url, kind }>。Mock 与真实实现签名一致，切换 CONFIG.USE_MOCK 无缝替换。 */
+
+async function generateMedia(opts) {
+  return CONFIG.USE_MOCK ? mockGenerateMedia(opts) : realGenerateMedia(opts);
+}
+
+/** 在画布上烧录右下角粗体水印「imageAI生成」（Canvas 绘制 → toDataURL，导出图自带水印） */
+function drawMockImage(prompt, W = 640, H = 420) {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+  /* 依据 prompt 哈希取渐变色 —— 同一提示词每次生成结果一致（可复现） */
+  let h = 0; for (const ch of prompt) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const hue = h % 360;
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, `hsl(${hue},70%,${(h % 20) + 25}%)`);
+  g.addColorStop(.55, `hsl(${(hue + 60) % 360},65%,40%)`);
+  g.addColorStop(1, `hsl(${(hue + 140) % 360},72%,28%)`);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  /* 装饰性"画面元素"：随机圆斑 + 提示词首行文字，模拟 AI 绘图结果 */
+  for (let i = 0; i < 14; i++) {
+    h = (h * 1103515245 + 12345) >>> 0;
+    ctx.globalAlpha = .06 + (h % 100) / 400;
+    ctx.beginPath();
+    ctx.arc((h % W), ((h >> 8) % H), 12 + ((h >> 4) % 70), 0, Math.PI * 2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+  }
+  ctx.globalAlpha = .9; ctx.fillStyle = '#fff';
+  ctx.font = '600 20px system-ui,"PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillText(prompt.slice(0, 26), 24, 44);
+  /* ★ 水印烧录（右下角 · 粗体 800）：与 CSS 浮层水印双保险，下载的图片同样带水印 */
+  ctx.globalAlpha = 1;
+  ctx.font = '800 22px system-ui,"PingFang SC","Microsoft YaHei",sans-serif';
+  const wm = CONFIG.WATERMARK, tw = ctx.measureText(wm).width;
+  ctx.fillStyle = 'rgba(0,0,0,.55)';
+  roundRect(ctx, W - tw - 34, H - 46, tw + 24, 34, 8); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.fillText(wm, W - tw - 22, H - 23);
+  return c.toDataURL('image/png');
+}
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+/** Mock 视频帧：随进度 t(0~1) 演化的动画画面 + 右下角粗体水印（供 captureStream 录制） */
+function drawMockVideoFrame(canvas, prompt, t) {
+  const ctx = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
+  let h = 0; for (const ch of prompt) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const hue = (h % 360) + t * 120;
+  const g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, `hsl(${hue % 360},70%,30%)`); g.addColorStop(1, `hsl(${(hue + 90) % 360},70%,20%)`);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 10; i++) {                       // 漂浮粒子（随时间移动 = "视频感"）
+    const px = (Math.sin(t * Math.PI * 2 + i * 1.7 + h) * .5 + .5) * W;
+    const py = (Math.cos(t * Math.PI * 2 + i * 2.3 + (h >> 8)) * .5 + .5) * H;
+    ctx.globalAlpha = .25; ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(px, py, 8 + i * 3, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = .9; ctx.fillStyle = '#fff';
+  ctx.font = '600 16px system-ui,"PingFang SC",sans-serif';
+  ctx.fillText(prompt.slice(0, 30), 16, 32);
+  /* ★ 视频水印：右下角粗体（烧进每一帧，录制出的 webm 自带水印） */
+  ctx.globalAlpha = 1; ctx.font = '800 18px system-ui,"PingFang SC",sans-serif';
+  const wm = CONFIG.WATERMARK, tw = ctx.measureText(wm).width;
+  ctx.fillStyle = 'rgba(0,0,0,.55)';
+  roundRect(ctx, W - tw - 26, H - 38, tw + 18, 28, 7); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.fillText(wm, W - tw - 17, H - 18);
+}
+
+/** Mock 生成：分阶段进度回调；图片走 Canvas，视频走 captureStream + MediaRecorder 产出真实可播放 blob */
+async function mockGenerateMedia({ kind, prompt, duration = 10, onProgress, signal }) {
+  const steps = kind === 'image'
+    ? [['理解提示词', 700], ['构图与扩散采样', 1100], ['细节修复与上色', 900]]
+    : [['理解提示词', 700], [`规划 ${duration}s 分镜`, 1000], ['逐帧扩散生成', 1500], ['插帧与合成', 1000]];
+  let pct = 0;
+  for (let i = 0; i < steps.length; i++) {
+    if (signal?.aborted) throw Object.assign(new Error('已取消'), { name: 'AbortError' });
+    onProgress && onProgress(steps[i][0], Math.round(pct));
+    await sleep(steps[i][1]);
+    pct += 100 / steps.length;
+  }
+  onProgress && onProgress(kind === 'image' ? '渲染输出' : '封装视频', 96);
+  await sleep(400);
+
+  if (kind === 'image') {
+    const url = drawMockImage(prompt);
+    onProgress && onProgress('完成', 100);
+    return { url, kind: 'image' };
+  }
+  /* ---- Mock 视频：离屏画布动画 → MediaRecorder 录制为 webm blob ---- */
+  const canvas = document.createElement('canvas'); canvas.width = 480; canvas.height = 300;
+  const stream = canvas.captureStream(15);
+  let mime = 'video/webm';
+  if (!MediaRecorder.isTypeSupported(mime)) mime = '';          // 极端环境不支持则用默认类型
+  const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+  const chunks = [];
+  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  const stopped = new Promise(res => { rec.onstop = res; });
+  rec.start(200);
+  const recSecs = Math.min(duration, 4);                        // Mock 只录 ≤4s 演示片段（真实 API 支持最长 30s）
+  const t0 = performance.now();
+  await new Promise((res, rej) => {
+    const tick = () => {
+      if (signal?.aborted) { rej(Object.assign(new Error('已取消'), { name: 'AbortError' })); return; }
+      const t = (performance.now() - t0) / 1000;
+      drawMockVideoFrame(canvas, prompt, t / recSecs);
+      onProgress && onProgress('封装视频', 96 + Math.round(Math.min(t / recSecs, 1) * 4));
+      if (t >= recSecs) res(); else requestAnimationFrame(tick);
+    };
+    tick();
+  });
+  rec.stop(); await stopped;
+  stream.getTracks().forEach(tr => tr.stop());
+  const blob = new Blob(chunks, { type: 'video/webm' });
+  const url = URL.createObjectURL(blob);
+  onProgress && onProgress('完成', 100);
+  return { url, kind: 'video', mockDuration: duration };
+}
+
+/** 真实接入框架：图片同步返回 / 视频创建任务后轮询（各家协议差异大，按文档微调字段名）
+ * ⚠️⚠️⚠️ 生产环境请勿在前端暴露 Key —— Authorization 建议由 proxy-server.js 注入转发。 */
+async function realGenerateMedia({ kind, prompt, size = '1024x1024', duration = 10, resolution = '1080p', onProgress, signal }) {
+  const headers = { 'Content-Type': 'application/json', ...(CONFIG.API_KEY ? { Authorization: 'Bearer ' + CONFIG.API_KEY } : {}) };
+  if (kind === 'image') {
+    onProgress && onProgress('图像模型生成中…', 40);
+    const r = await fetch(CONFIG.IMAGES_ENDPOINT, {
+      method: 'POST', headers, signal,
+      body: JSON.stringify({ model: mapModel('image-1'), prompt, n: 1, size, response_format: 'url' }),  // ★【替换点】请求体按上游文档调整
+    });
+    if (r.status === 401 || r.status === 403) throw new AuthError(r.status);
+    if (!r.ok) { let d = ''; try { d = '：' + (await r.json())?.error?.message; } catch {} throw new Error(`图片生成失败 HTTP ${r.status}${d}`); }
+    const j = await r.json();
+    const url = j.data?.[0]?.url || (j.data?.[0]?.b64_json ? `data:image/png;base64,${j.data[0].b64_json}` : null);
+    if (!url) throw new Error('响应中未找到图片 URL');
+    onProgress && onProgress('完成', 100);
+    return { url, kind: 'image' };
+  }
+  /* 视频：多数厂商为"创建任务 → 轮询状态"异步模式 */
+  onProgress && onProgress('提交视频生成任务…', 5);
+  /* ★【时长上限校验】视频最长 ${CONFIG.VIDEO_MAX_SECONDS} 秒 —— 超限时钳制并提示 */
+  const dur = Math.min(Math.max(Number(duration) || 5, 5), CONFIG.VIDEO_MAX_SECONDS);
+  const cr = await fetch(CONFIG.VIDEOS_ENDPOINT, {
+    method: 'POST', headers, signal,
+    body: JSON.stringify({ model: mapModel('image-video'), prompt, seconds: String(dur), size: `${resolution}`, purge: false }), // ★【替换点】字段名按上游文档（如 duration/aspect_ratio）
+  });
+  if (cr.status === 401 || cr.status === 403) throw new AuthError(cr.status);
+  if (!cr.ok) { let d = ''; try { d = '：' + (await cr.json())?.error?.message; } catch {} throw new Error(`视频任务创建失败 HTTP ${cr.status}${d}`); }
+  const task = await cr.json();
+  const taskId = task.id || task.task_id || task.data?.id;       // ★【替换点】任务 id 字段
+  if (!taskId) throw new Error('响应中未找到任务 ID');
+  /* 轮询直到 completed / failed（每 4s 一次，最长 10 分钟） */
+  const deadline = Date.now() + 10 * 60 * 1000;
+  while (Date.now() < deadline) {
+    if (signal?.aborted) throw Object.assign(new Error('已取消'), { name: 'AbortError' });
+    await sleep(4000);
+    const pr = await fetch(`${CONFIG.VIDEOS_ENDPOINT}/${encodeURIComponent(taskId)}`, { headers, signal });
+    if (pr.status === 401 || pr.status === 403) throw new AuthError(pr.status);
+    const st = await pr.json();
+    const status = st.status || st.data?.status;                 // ★【替换点】状态字段
+    onProgress && onProgress(`视频生成中（${status || '处理中'}）`, Math.min(5 + (st.progress ?? 0) * .8, 95));
+    if (status === 'completed' || status === 'succeeded') {
+      const url = st.video_url || st.data?.video_url || st.output?.video_url || st.data?.result?.url;  // ★【替换点】结果 URL 字段
+      if (!url) throw new Error('任务完成但未返回视频 URL');
+      onProgress && onProgress('完成', 100);
+      return { url, kind: 'video' };
+    }
+    if (status === 'failed') throw new Error('视频生成失败：' + (st.error?.message || st.msg || '未知原因'));
+  }
+  throw new Error('视频生成超时（>10 分钟），请稍后在任务列表查看');
 }
 
 /* ============================ Section 7 · Boot（启动入口） ============================ */
